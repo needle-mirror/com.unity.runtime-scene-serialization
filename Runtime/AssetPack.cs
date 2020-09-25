@@ -1,0 +1,501 @@
+﻿using System;
+using System.Collections.Generic;
+using UnityEditor;
+using UnityEngine;
+using UnityObject = UnityEngine.Object;
+using Unity.RuntimeSceneSerialization.Prefabs;
+
+namespace Unity.RuntimeSceneSerialization
+{
+    public class AssetPack : ScriptableObject, ISerializationCallbackReceiver
+    {
+        [Serializable]
+        internal class Asset : ISerializationCallbackReceiver
+        {
+            [SerializeField]
+            long[] m_FileIds;
+
+            [SerializeField]
+            UnityObject[] m_Assets;
+
+            readonly Dictionary<long, UnityObject> m_FileIdToAssetMap = new Dictionary<long, UnityObject>();
+            readonly Dictionary<UnityObject, long> m_AssetToFileIdMap = new Dictionary<UnityObject, long>();
+
+            // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
+            readonly List<long> k_FileIds = new List<long>();
+            readonly List<UnityObject> k_Assets = new List<UnityObject>();
+
+            internal Dictionary<long, UnityObject> Assets => m_FileIdToAssetMap;
+
+#if UNITY_EDITOR
+            internal long AddAssetAndGetFileId(UnityObject asset)
+            {
+                if (asset == null)
+                    return k_InvalidId;
+
+                long fileId;
+                if (m_AssetToFileIdMap.TryGetValue(asset, out fileId))
+                    return fileId;
+
+                if (!TryGetGUIDAndLocalFileIdentifier(asset, out _, out fileId))
+                    return k_InvalidId;
+
+                m_AssetToFileIdMap[asset] = fileId;
+                m_FileIdToAssetMap[fileId] = asset;
+                return fileId;
+            }
+
+            public void GetOrAddAssetMetadata(UnityObject obj, out long fileId)
+            {
+                if (m_AssetToFileIdMap.TryGetValue(obj, out fileId))
+                    return;
+
+                if (!TryGetGUIDAndLocalFileIdentifier(obj, out _, out fileId))
+                    fileId = k_InvalidId;
+
+                AddAssetMetadata(obj, fileId);
+            }
+#endif
+
+            internal long GetFileIdOfAsset(UnityObject asset)
+            {
+                if (asset == null)
+                    return k_InvalidId;
+
+                long fileId;
+                return m_AssetToFileIdMap.TryGetValue(asset, out fileId) ? fileId : k_InvalidId;
+            }
+
+            public UnityObject GetAsset(long fileId)
+            {
+                UnityObject asset;
+                return m_FileIdToAssetMap.TryGetValue(fileId, out asset) ? asset : null;
+            }
+
+            public void OnBeforeSerialize()
+            {
+                k_FileIds.Clear();
+                k_Assets.Clear();
+                foreach (var kvp in m_FileIdToAssetMap)
+                {
+                    var fileId = kvp.Key;
+                    var asset = kvp.Value;
+                    // TODO: figure out why this check is failing on enter play mode
+                    // if (fileId == k_InvalidId || asset == null)
+                    //     continue;
+
+                    k_FileIds.Add(fileId);
+                    k_Assets.Add(asset);
+                }
+
+                m_FileIds = k_FileIds.ToArray();
+                m_Assets = k_Assets.ToArray();
+            }
+
+            public void OnAfterDeserialize()
+            {
+                if (m_FileIds == null || m_Assets == null)
+                    return;
+
+                var length = m_FileIds.Length;
+                var assetLength = m_Assets.Length;
+                if (assetLength < length)
+                    Debug.LogWarning("Problem in Asset Pack. Number of assets is less than number of fileIds");
+
+                m_FileIdToAssetMap.Clear();
+                m_AssetToFileIdMap.Clear();
+                for (var i = 0; i < length; i++)
+                {
+                    var fileId = m_FileIds[i];
+                    if (i < assetLength)
+                    {
+                        var asset = m_Assets[i];
+                        if (asset != null)
+                            m_AssetToFileIdMap[asset] = fileId;
+
+                        m_FileIdToAssetMap[fileId] = asset;
+                    }
+                    else
+                    {
+                        m_FileIdToAssetMap[fileId] = null;
+                    }
+                }
+            }
+
+            public bool TryGetFileId(UnityObject obj, out long fileId)
+            {
+                return m_AssetToFileIdMap.TryGetValue(obj, out fileId);
+            }
+
+            public void AddAssetMetadata(UnityObject obj, long fileId)
+            {
+                m_AssetToFileIdMap[obj] = fileId;
+                m_FileIdToAssetMap[fileId] = obj;
+            }
+        }
+
+        const int k_InvalidId = -1;
+        const string k_AssetPackFilter = "t:" + nameof(AssetPack);
+
+#if UNITY_EDITOR
+        static readonly Dictionary<UnityObject, KeyValuePair<string, long>> k_CachedAssets = new Dictionary<UnityObject, KeyValuePair<string, long>>();
+        static readonly Dictionary<SceneAsset, AssetPack> k_SceneToAssetPack = new Dictionary<SceneAsset, AssetPack>();
+#endif
+
+        static readonly HashSet<IPrefabFactory> k_PrefabFactories = new HashSet<IPrefabFactory>();
+
+        [SerializeField]
+        UnityObject m_SceneAsset;
+
+        [HideInInspector]
+        [SerializeField]
+        string[] m_Guids;
+
+        [HideInInspector]
+        [SerializeField]
+        Asset[] m_Assets;
+
+        [HideInInspector]
+        [SerializeField]
+        List<string> m_PrefabGuids = new List<string>();
+
+        [HideInInspector]
+        [SerializeField]
+        List<GameObject> m_Prefabs = new List<GameObject>();
+
+        readonly Dictionary<string, Asset> m_AssetDictionary = new Dictionary<string, Asset>();
+        readonly Dictionary<UnityObject, KeyValuePair<string, long>> m_AssetLookupMap = new Dictionary<UnityObject, KeyValuePair<string, long>>();
+        readonly Dictionary<UnityObject, string> m_GuidMap = new Dictionary<UnityObject, string>();
+        readonly Dictionary<string, GameObject> m_PrefabDictionary = new Dictionary<string, GameObject>();
+
+        // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
+        readonly List<string> k_Guids = new List<string>();
+        readonly List<Asset> k_Assets = new List<Asset>();
+
+        internal Dictionary<string, Asset> Assets => m_AssetDictionary;
+        internal Dictionary<string, GameObject> Prefabs => m_PrefabDictionary;
+        public int AssetCount => Assets.Count;
+        public UnityObject SceneAsset { set => m_SceneAsset = value; get => m_SceneAsset; }
+
+        // TODO: figure out how to specify the asset pack in the call to Serialize
+        public static AssetPack CurrentAssetPack;
+
+        public static void RegisterPrefabFactory(IPrefabFactory factory)
+        {
+            k_PrefabFactories.Add(factory);
+        }
+
+        public static void UnregisterPrefabFactory(IPrefabFactory factory)
+        {
+            k_PrefabFactories.Remove(factory);
+        }
+
+        /// <summary>
+        /// Clear all asset references in this AssetPack
+        /// </summary>
+        public void Clear()
+        {
+            m_AssetDictionary.Clear();
+            m_AssetLookupMap.Clear();
+            m_PrefabDictionary.Clear();
+        }
+
+        /// <summary>
+        /// Get the guid and sub-asset index for a given asset
+        /// Also adds the asset to the asset pack in the editor
+        /// </summary>
+        /// <param name="obj">The asset object</param>
+        /// <param name="guid"></param>
+        /// <param name="fileId"></param>
+        /// <param name="assetPack"></param>
+        public static void GetAssetMetadata(UnityObject obj, out string guid, out long fileId, AssetPack assetPack = null)
+        {
+            if (assetPack != null)
+            {
+                KeyValuePair<string, long> metadata;
+                if (assetPack.m_AssetLookupMap.TryGetValue(obj, out metadata))
+                {
+                    guid = metadata.Key;
+                    fileId = metadata.Value;
+                    return;
+                }
+            }
+
+#if UNITY_EDITOR
+            if (!Application.isPlaying)
+            {
+                if (assetPack != null)
+                {
+                    assetPack.GetOrAddAssetMetadata(obj, out guid, out fileId);
+                }
+                else
+                {
+                    if (k_CachedAssets.TryGetValue(obj, out var value))
+                    {
+                        guid = value.Key;
+                        fileId = value.Value;
+                        return;
+                    }
+
+                    if (TryGetGUIDAndLocalFileIdentifier(obj, out guid, out fileId))
+                        k_CachedAssets[obj] = new KeyValuePair<string, long>(guid, fileId);
+                    else
+                        k_CachedAssets[obj] = new KeyValuePair<string, long>(string.Empty, k_InvalidId);
+                }
+
+                return;
+            }
+#endif
+
+            guid = string.Empty;
+            fileId = k_InvalidId;
+
+            // Suppress warning for DontSave objects
+            if ((obj.hideFlags & HideFlags.DontSave) == HideFlags.None && EditorMetadata.IsSetup)
+                Debug.LogWarning($"Could not find asset metadata for {obj}");
+        }
+
+#if UNITY_EDITOR
+        public static void GetPrefabMetadata(GameObject prefabInstance, out string guid, AssetPack assetPack = null)
+        {
+            var path = PrefabUtility.GetPrefabAssetPathOfNearestInstanceRoot(prefabInstance);
+            if (string.IsNullOrEmpty(path))
+            {
+                Debug.LogWarning($"Could not find prefab path for {prefabInstance.name}");
+                guid = null;
+                return;
+            }
+
+            guid = AssetDatabase.AssetPathToGUID(path);
+            if (string.IsNullOrEmpty(guid))
+            {
+                Debug.LogWarning($"Could not find guid for {path}");
+                return;
+            }
+
+            if (assetPack != null)
+                assetPack.m_PrefabDictionary[guid] = AssetDatabase.LoadAssetAtPath<GameObject>(path);
+        }
+
+        void GetOrAddAssetMetadata(UnityObject obj, out string guid, out long fileId)
+        {
+            Asset asset;
+            if (!m_GuidMap.TryGetValue(obj, out guid))
+            {
+                if (TryGetGUIDAndLocalFileIdentifier(obj, out guid, out fileId))
+                {
+                    m_GuidMap[obj] = guid;
+                    asset = new Asset();
+                    asset.AddAssetMetadata(obj, fileId);
+                    m_AssetDictionary[guid] = asset;
+                    return;
+                }
+
+                m_GuidMap[obj] = null;
+                return;
+            }
+
+            if (string.IsNullOrEmpty(guid))
+            {
+                fileId = k_InvalidId;
+                return;
+            }
+
+            if (!m_AssetDictionary.TryGetValue(guid, out asset))
+            {
+                asset = new Asset();
+                m_AssetDictionary[guid] = asset;
+            }
+
+            asset.GetOrAddAssetMetadata(obj, out fileId);
+        }
+
+        static bool TryGetGUIDAndLocalFileIdentifier(UnityObject obj, out string guid, out long fileId)
+        {
+            if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out guid, out fileId))
+            {
+                // Check if target object is marked as "DontSave"--that means it is a scene object but won't have an EditorMetadata
+                // Otherwise, this is an error, and we cannot find a valid assetpath
+                // Suppress warning if EditorMetadata is not setup (i.e. during deserialization)
+                if ((obj.hideFlags & HideFlags.DontSave) == HideFlags.None && EditorMetadata.IsSetup)
+                    Debug.LogWarningFormat("Could not find asset path for {0}", obj);
+
+                guid = string.Empty;
+                fileId = k_InvalidId;
+                return false;
+            }
+
+            return true;
+        }
+
+        public static AssetPack GetAssetPackForScene(SceneAsset sceneAsset)
+        {
+            if (k_SceneToAssetPack.TryGetValue(sceneAsset, out var assetPack))
+                return assetPack;
+
+            var allAssetPacks = AssetDatabase.FindAssets(k_AssetPackFilter);
+            foreach (var guid in allAssetPacks)
+            {
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path))
+                    continue;
+
+                var loadedAssetPack = AssetDatabase.LoadAssetAtPath<AssetPack>(path);
+                if (loadedAssetPack == null)
+                    continue;
+
+                var loadedSceneAsset = loadedAssetPack.SceneAsset as SceneAsset;
+                if (loadedSceneAsset == null)
+                    continue;
+
+                k_SceneToAssetPack[loadedSceneAsset] = loadedAssetPack;
+
+                if (loadedSceneAsset == sceneAsset)
+                    assetPack = loadedAssetPack;
+            }
+
+            return assetPack;
+        }
+
+        public static void RemoveCachedAssetPack(SceneAsset sceneAsset)
+        {
+            if (sceneAsset != null)
+                k_SceneToAssetPack.Remove(sceneAsset);
+        }
+        public static void ClearAssetPackCache() { k_SceneToAssetPack.Clear(); }
+#endif
+
+        public UnityObject GetAsset(string guid, long fileId)
+        {
+            if (fileId < 0)
+            {
+                Debug.LogErrorFormat("Invalid index {0}", fileId);
+                return null;
+            }
+
+            if (!m_AssetDictionary.TryGetValue(guid, out var asset))
+            {
+#if UNITY_EDITOR
+                Debug.LogWarningFormat("Asset pack {0} does not contain an asset for guid {1}. Falling back to AssetDatabase.", name, guid);
+                var path = AssetDatabase.GUIDToAssetPath(guid);
+                if (string.IsNullOrEmpty(path))
+                {
+                    Debug.LogWarningFormat("Could not find asset path for {0}", guid);
+                    return null;
+                }
+
+                var assets = AssetDatabase.LoadAllAssetsAtPath(path);
+                if (assets == null)
+                {
+                    Debug.LogWarningFormat("Could not load asset with guid {0}", guid);
+                    return null;
+                }
+
+                foreach (var subAsset in assets)
+                {
+                    if (AssetDatabase.TryGetGUIDAndLocalFileIdentifier(subAsset, out _, out long assetFileId))
+                    {
+                        if (assetFileId == fileId)
+                            return subAsset;
+                    }
+                }
+
+                Debug.LogWarningFormat("Invalid index (too large): {0} for asset at path {1}", fileId, path);
+                return null;
+#else
+                Debug.LogWarningFormat("Could not load asset with guid {0}", guid);
+                return null;
+#endif
+            }
+
+            return asset.GetAsset(fileId);
+        }
+
+        public void OnBeforeSerialize()
+        {
+            k_Guids.Clear();
+            k_Assets.Clear();
+            foreach (var kvp in m_AssetDictionary)
+            {
+                var guid = kvp.Key;
+                if (string.IsNullOrEmpty(guid))
+                    continue;
+
+                k_Guids.Add(guid);
+                k_Assets.Add(kvp.Value);
+            }
+
+            m_Guids = k_Guids.ToArray();
+            m_Assets = k_Assets.ToArray();
+
+            m_PrefabGuids.Clear();
+            m_Prefabs.Clear();
+            foreach (var kvp in m_PrefabDictionary)
+            {
+                var guid = kvp.Key;
+                if (string.IsNullOrEmpty(guid))
+                    continue;
+
+                m_PrefabGuids.Add(guid);
+                m_Prefabs.Add(kvp.Value);
+            }
+        }
+
+        public void OnAfterDeserialize()
+        {
+            m_AssetDictionary.Clear();
+            var count = m_Guids.Length;
+            for (var i = 0; i < count; i++)
+            {
+                var asset = m_Assets[i];
+                var guid = m_Guids[i];
+
+                if (string.IsNullOrEmpty(guid))
+                    continue;
+
+                m_AssetDictionary[guid] = asset;
+
+                foreach (var kvp in asset.Assets)
+                {
+                    var assetRef = kvp.Value;
+                    if (assetRef)
+                        m_AssetLookupMap[assetRef] = new KeyValuePair<string, long>(guid, kvp.Key);
+                }
+            }
+
+            count = m_PrefabGuids.Count;
+            for (var i = 0; i < count; i++)
+            {
+                var prefab = m_Prefabs[i];
+                var guid = m_PrefabGuids[i];
+                if (string.IsNullOrEmpty(guid))
+                    continue;
+
+                m_PrefabDictionary[guid] = prefab;
+            }
+        }
+
+        public static GameObject TryInstantiatePrefab(string prefabGuid, Transform parent, AssetPack assetPack = null)
+        {
+            if (assetPack != null)
+            {
+                if (assetPack.m_PrefabDictionary.TryGetValue(prefabGuid, out var prefab))
+                    return Instantiate(prefab, parent);
+            }
+
+            foreach (var factory in k_PrefabFactories)
+            {
+                try
+                {
+                    return factory.TryInstantiatePrefab(prefabGuid, parent);
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
+            }
+
+            return null;
+        }
+    }
+}

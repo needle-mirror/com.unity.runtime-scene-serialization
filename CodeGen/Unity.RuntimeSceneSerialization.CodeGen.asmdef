@@ -1,0 +1,26 @@
+{
+    "name": "Unity.RuntimeSceneSerialization.CodeGen",
+    "references": [
+        "Unity.XRTools.Utils",
+        "Unity.Properties",
+        "Unity.Properties.CodeGen",
+        "UnityEngine.UI",
+        "Unity.RuntimeSceneSerialization",
+        "Unity.RuntimeSceneSerialization.Editor"
+    ],
+    "includePlatforms": [
+        "Editor"
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": true,
+    "precompiledReferences": [
+        "Mono.Cecil.dll",
+        "Mono.Cecil.Pdb.dll",
+        "Mono.Cecil.Rocks.dll"
+    ],
+    "autoReferenced": false,
+    "defineConstraints": [],
+    "versionDefines": [],
+    "noEngineReferences": false
+}

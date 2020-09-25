@@ -1,0 +1,24 @@
+{
+    "name": "Unity.RuntimeSceneSerialization",
+    "references": [
+        "Unity.Properties",
+        "Unity.TextMeshPro",
+        "Unity.XRTools.Utils",
+        "Unity.Serialization"
+    ],
+    "includePlatforms": [],
+    "excludePlatforms": [],
+    "allowUnsafeCode": true,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": [],
+    "versionDefines": [
+        {
+            "name": "com.unity.textmeshpro",
+            "expression": "2.0.0",
+            "define": "INCLUDE_TEXT_MESH_PRO"
+        }
+    ],
+    "noEngineReferences": false
+}

@@ -11,6 +11,7 @@ using Mono.Cecil.Rocks;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.Properties.CodeGen.Blocks;
+using Unity.RuntimeSceneSerialization.Internal;
 using UnityEngine;
 using UnityEngine.Scripting;
 using FieldAttributes = Mono.Cecil.FieldAttributes;
@@ -20,9 +21,11 @@ using TypeAttributes = Mono.Cecil.TypeAttributes;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
+    /// <summary>
+    /// ILPostProcessor responsible for generating property bags for user types (including packages)
+    /// </summary>
     class UserAssemblyPostProcessor : ILPostProcessor
     {
-        const string k_NUnitFrameworkDllName = "nunit.framework.dll";
         static readonly MethodInfo k_GetTypeMethod = typeof(Type).GetMethods(BindingFlags.Public | BindingFlags.Static).First(x => x.GetParameters().Length == 1 && x.Name == nameof(Type.GetType));
         static readonly HashSet<string> k_IgnoredTypeNames = new HashSet<string>
         {
@@ -64,21 +67,22 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static bool ShouldProcess(ICompiledAssembly compiledAssembly)
         {
-            if (!compiledAssembly.IsIl2CppEnabled())
+            if (!compiledAssembly.RequiresCodegen())
                 return false;
 
-            if (compiledAssembly.Name == CodeGenUtils.ExternalPropertyBagAssemblyName)
+            var assemblyName = compiledAssembly.Name;
+            if (assemblyName == CodeGenUtils.ExternalPropertyBagAssemblyName)
                 return false;
 
             // TODO: Debug type load exception and other assembly-specific issues
-            if (k_IgnoredAssemblies.Contains(compiledAssembly.Name))
+            if (k_IgnoredAssemblies.Contains(assemblyName))
                 return false;
 
-            foreach (var reference in compiledAssembly.References)
-            {
-                if (reference.Contains(k_NUnitFrameworkDllName))
-                    return false;
-            }
+            if (RuntimeSerializationSettingsUtils.GetAssemblyExceptions().Contains(assemblyName))
+                return false;
+
+            if (CodeGenUtils.IsTestAssembly(compiledAssembly))
+                return false;
 
             return true;
         }
@@ -138,6 +142,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static void PostProcessAssembly(AssemblyDefinition assembly, HashSet<TypeDefinition> serializableTypes)
         {
+            var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
+            var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
             foreach (var module in assembly.Modules)
             {
                 foreach (var type in module.GetTypes())
@@ -148,20 +154,40 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     if (type.HasGenericParameters && !type.IsGenericInstance)
                         continue;
 
-                    var (hasGeneratePropertyBagAttribute, hasSkipGenerationAttribute, hasCompilerGeneratedAttribute) = CodeGenUtils.GetSerializationAttributes(type);
+                    var (hasSkipGenerationAttribute, hasCompilerGeneratedAttribute) = CodeGenUtils.GetSerializationAttributes(type);
                     if (hasSkipGenerationAttribute || hasCompilerGeneratedAttribute)
                         continue;
 
-                    if (!CodeGenUtils.IsAssignableToComponent(type) && !hasGeneratePropertyBagAttribute)
+                    if (!CodeGenUtils.IsAssignableToComponent(type))
                     {
 #if INCLUDE_ALL_SERIALIZABLE_CONTAINERS
                         if (!CodeGenUtils.IsSerializableContainer(type))
 #endif
-                        continue;
+                            continue;
                     }
 
                     var typeName = type.FullName;
                     if (string.IsNullOrEmpty(typeName))
+                        continue;
+
+                    if (typeExceptions.Contains(typeName))
+                        continue;
+
+                    var partOfNamespaceException = false;
+                    var typeNamespace = type.Namespace;
+                    if (!string.IsNullOrEmpty(typeNamespace))
+                    {
+                        foreach (var exception in namespaceExceptions)
+                        {
+                            if (typeNamespace.Contains(exception))
+                            {
+                                partOfNamespaceException = true;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (partOfNamespaceException)
                         continue;
 
                     serializableTypes.Add(type);
@@ -181,7 +207,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 var resolvedMemberType = memberType.Resolve();
                 if (resolvedMemberType == null)
                 {
-                    Debug.LogError($"Couldn't resolve {memberType}");
+                    Console.Error.WriteLine($"Couldn't resolve {memberType}");
                     continue;
                 }
 
@@ -195,7 +221,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (resolvedMemberType.HasGenericParameters && !resolvedMemberType.IsGenericInstance)
                     continue;
 
-                var (_, hasSkipGenerationAttribute, hasCompilerGeneratedAttribute) = CodeGenUtils.GetSerializationAttributes(resolvedMemberType);
+                var (hasSkipGenerationAttribute, hasCompilerGeneratedAttribute) = CodeGenUtils.GetSerializationAttributes(resolvedMemberType);
                 if (hasSkipGenerationAttribute || hasCompilerGeneratedAttribute)
                     continue;
 
@@ -238,6 +264,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             foreach (var type in serializableContainerTypes)
             {
+                Console.WriteLine($"GENERATE FOR {type}");
                 var containerType = type.Module == context.Module ? type : context.ImportReference(type);
                 externalContainerTypes.TryGetValue(type.FullName, out var externalContainer);
                 var propertyBagType = GeneratePropertyBag(context, containerType, externalContainer, externalContainerTypes, getTypeMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference, listType);

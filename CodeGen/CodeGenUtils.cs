@@ -11,16 +11,14 @@ using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
-using Unity.XRTools.Utils;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
-    public static class CodeGenUtils
+    static class CodeGenUtils
     {
         internal const string ExternalPropertyBagAssemblyName = "Unity.RuntimeSceneSerialization.Generated";
-        static readonly string k_GeneratePropertyBagAttributeName = typeof(GenerateRuntimeSceneSerializationPropertyBag).FullName;
         static readonly string k_SkipGenerationAttributeName = typeof(SkipGeneration).FullName;
 
         static readonly ConcurrentDictionary<string, bool> k_ListTypes = new ConcurrentDictionary<string, bool>();
@@ -31,7 +29,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static readonly ConcurrentDictionary<string, bool> k_KnownUnityObjectTypes = new ConcurrentDictionary<string, bool>();
         static readonly ConcurrentDictionary<string, bool> k_KnownComponentTypes = new ConcurrentDictionary<string, bool>();
 
-        static readonly ConcurrentDictionary<string, (bool, bool, bool)> k_SerializableTypeAttributes = new ConcurrentDictionary<string, (bool, bool, bool)>();
+        static readonly ConcurrentDictionary<string, (bool, bool)> k_SerializableTypeAttributes = new ConcurrentDictionary<string, (bool, bool)>();
         static readonly ConcurrentDictionary<string, (bool, bool, string)> k_SerializableFieldAttributes = new ConcurrentDictionary<string, (bool, bool, string)>();
 
         static readonly string k_ListTypeName = typeof(List<>).FullName;
@@ -40,18 +38,21 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static readonly string k_UnityObjectTypeName = typeof(UnityObject).FullName;
         static readonly string k_ComponentTypeName = typeof(Component).FullName;
         static readonly string k_GameObjectTypeName = typeof(GameObject).FullName;
-        static readonly string k_NativePropertyAttributeName = ReflectionUtils.FindType(type => type.Name == "NativePropertyAttribute").FullName;
         static readonly string k_CompilerGeneratedAttributeName = typeof(CompilerGeneratedAttribute).FullName;
         static readonly string k_GameObjectContainerTypeName = typeof(GameObjectContainer).FullName;
 
         static readonly string k_SerializeFieldTypeName = typeof(SerializeField).FullName;
+        const string k_NativePropertyAttributeName = "UnityEngine.Bindings.NativePropertyAttribute";
         const string k_NativeNameTypeName = "UnityEngine.Bindings.NativeNameAttribute";
         const string k_IgnoreTypeName = "UnityEngine.Bindings.IgnoreAttribute";
         const string k_EnableIl2CppDefine = "ENABLE_IL2CPP";
+        const string k_NetDotsDefine = "NET_DOTS";
+        const string k_NUnitFrameworkAssemblyName = "nunit.framework";
 
-        internal static bool IsIl2CppEnabled(this ICompiledAssembly compiledAssembly)
+        internal static bool RequiresCodegen(this ICompiledAssembly compiledAssembly)
         {
-            return compiledAssembly.Defines.Contains(k_EnableIl2CppDefine);
+            var containsIl2Cpp = compiledAssembly.Defines.Contains(k_EnableIl2CppDefine);
+            return containsIl2Cpp || compiledAssembly.Defines.Contains(k_NetDotsDefine);
         }
 
         internal static bool IsListType(TypeReference type, out IGenericInstance genericInstance)
@@ -86,7 +87,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var isAbstractOrInterface = type.IsAbstract || type.IsInterface;
             isSerializableContainer = !(isPrimitive || isAbstractOrInterface)
                 && (type.GetCustomAttribute<SerializableAttribute>() != null
-                || type.Namespace == "UnityEngine");
+                || type.IsValueType && type.Namespace == "UnityEngine");
 
             k_SerializableContainerTypes[typeName] = isSerializableContainer;
             if (isSerializableContainer)
@@ -118,7 +119,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     isSerializable = resolvedType.IsEnum || (resolvedType.Attributes & Mono.Cecil.TypeAttributes.Serializable) != 0;
 #if PROPERTY_GENERATION_LOG
                 else
-                    Debug.LogError($"{type} in {type.Module.Assembly.Name} cannot be resolved");
+                    Console.Error.WriteLine($"{type} in {type.Module.Assembly.Name} cannot be resolved");
 #endif
             }
 
@@ -167,7 +168,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (resoledType == null)
             {
 #if PROPERTY_GENERATION_LOG
-                Debug.LogError($"{memberType} in {memberType.Module.Assembly.Name} cannot be resolved");
+                Console.Error.WriteLine($"{memberType} in {memberType.Module.Assembly.Name} cannot be resolved");
 #endif
 
                 return false;
@@ -200,7 +201,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (resoledType == null)
             {
 #if PROPERTY_GENERATION_LOG
-                Debug.LogError($"{memberType} in {memberType.Module.Assembly.Name} cannot be resolved");
+                Console.Error.WriteLine($"{memberType} in {memberType.Module.Assembly.Name} cannot be resolved");
 #endif
 
                 return false;
@@ -463,21 +464,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return $"{name}, {resolvedType.Module.Assembly.Name}";
         }
 
-        internal static (bool generatePropertyBag, bool skipGeneration, bool compilerGenerated) GetSerializationAttributes(TypeDefinition type)
+        internal static (bool skipGeneration, bool compilerGenerated) GetSerializationAttributes(TypeDefinition type)
         {
             var typeName = type.FullName;
             if (k_SerializableTypeAttributes.TryGetValue(typeName, out var attributes))
                 return attributes;
 
-            var hasGeneratePropertyBagAttribute = false;
             var hasSkipGenerationAttribute = false;
             var hasCompilerGeneratedAttribute = false;
             foreach (var attribute in type.CustomAttributes)
             {
                 var attributeTypeName = attribute.AttributeType.FullName;
-                if (attributeTypeName == k_GeneratePropertyBagAttributeName)
-                    hasGeneratePropertyBagAttribute = true;
-
                 if (attributeTypeName == k_SkipGenerationAttributeName)
                     hasSkipGenerationAttribute = true;
 
@@ -486,7 +483,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             }
 
 
-            attributes = (hasGeneratePropertyBagAttribute, hasSkipGenerationAttribute, hasCompilerGeneratedAttribute);
+            attributes = (hasSkipGenerationAttribute, hasCompilerGeneratedAttribute);
             k_SerializableTypeAttributes[typeName] = attributes;
             return attributes;
         }
@@ -522,6 +519,28 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         public static bool IsBuiltInAssembly(Assembly assembly, string editorPath)
         {
             return assembly.Location.Replace("\\", "/").Contains(editorPath);
+        }
+
+        internal static bool IsTestAssembly(ICompiledAssembly assembly)
+        {
+            foreach (var reference in assembly.References)
+            {
+                if (reference.Contains(k_NUnitFrameworkAssemblyName))
+                    return true;
+            }
+
+            return false;
+        }
+
+        public static bool IsTestAssembly(Assembly assembly)
+        {
+            foreach (var reference in assembly.GetReferencedAssemblies())
+            {
+                if (reference.FullName.Contains(k_NUnitFrameworkAssemblyName))
+                    return true;
+            }
+
+            return false;
         }
     }
 

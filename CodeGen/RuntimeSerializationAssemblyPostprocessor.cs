@@ -6,6 +6,7 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
+using Unity.RuntimeSceneSerialization.Internal;
 using Unity.XRTools.Utils;
 using UnityEditor;
 using UnityEditor.Compilation;
@@ -16,6 +17,9 @@ using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
+    /// <summary>
+    /// ILPostProcessor responsible for codegen that supports the GenericMethodWrapper API
+    /// </summary>
     [InitializeOnLoad]
     class RuntimeSerializationAssemblyPostprocessor : ILPostProcessor
     {
@@ -25,7 +29,13 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             public int BaseTypeCount;
         }
 
+#if UNITY_2020_2_OR_NEWER
+        static readonly int k_EditorAssemblyPathSuffix = "/Contents/Managed/UnityEngine/UnityEditor.CoreModule.dll".Length;
+#endif
+
         const string k_SerializationAssemblyName = "Unity.RuntimeSceneSerialization";
+        const string k_InvokeGenericMethodWrapper = "InvokeGenericMethodWrapper";
+        const string k_CallGenericMethod = "CallGenericMethod";
         static readonly string k_SerializationUtilsTypeName = typeof(SerializationUtils).FullName;
         static readonly HashSet<string> k_PlayerAssemblies = new HashSet<string>();
 
@@ -41,7 +51,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static bool ShouldProcess(ICompiledAssembly compiledAssembly)
         {
-            if (!compiledAssembly.IsIl2CppEnabled())
+            if (!compiledAssembly.RequiresCodegen())
                 return false;
 
             return compiledAssembly.Name == k_SerializationAssemblyName;
@@ -49,7 +59,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static RuntimeSerializationAssemblyPostprocessor()
         {
-            var tempAssembliesPath = Path.Combine(Application.temporaryCachePath, "PlayerAssemblies");
+            // Hard-code "Temp" because of missing method exception trying to use Application.temporaryCachePath
+            var tempAssembliesPath = Path.Combine("Temp", "PlayerAssemblies");
             if (File.Exists(tempAssembliesPath))
             {
                 var assemblies = File.ReadAllText(tempAssembliesPath);
@@ -116,7 +127,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         {
             var module = compiledAssembly.MainModule;
             var componentTypes = new List<TypeContainer>();
+
+#if UNITY_2020_2_OR_NEWER
+            var editorAssemblyPath = Assembly.GetAssembly(typeof(EditorApplication)).Location;
+            var editorPath = editorAssemblyPath.Substring(0, editorAssemblyPath.Length - k_EditorAssemblyPathSuffix);
+#else
             var editorPath = EditorApplication.applicationContentsPath;
+#endif
+
+            var assemblyExceptions = RuntimeSerializationSettingsUtils.GetAssemblyExceptions();
+            var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
+            var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
             ReflectionUtils.ForEachAssembly(assembly =>
             {
                 if (assembly.IsDynamic)
@@ -125,7 +146,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (!CodeGenUtils.IsBuiltInAssembly(assembly, editorPath) && !k_PlayerAssemblies.Contains(assembly.GetName().Name))
                     return;
 
-                PostProcessAssembly(module, assembly, componentTypes);
+                if (assemblyExceptions.Contains(assembly.FullName))
+                    return;
+
+                PostProcessAssembly(namespaceExceptions, typeExceptions, module, assembly, componentTypes);
             });
 
             PostProcessGenericMethodWrapper(componentTypes, module);
@@ -138,7 +162,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var serializationUtilsType = module.GetType(k_SerializationUtilsTypeName);
             if (serializationUtilsType == null)
             {
-                Debug.LogError($"Could not find {k_SerializationUtilsTypeName}");
+                Console.Error.WriteLine($"Could not find {k_SerializationUtilsTypeName}");
                 return;
             }
 
@@ -146,22 +170,22 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             MethodDefinition callGenericMethodMethod = null;
             foreach (var method in serializationUtilsType.Methods)
             {
-                if (method.Name == nameof(SerializationUtils.InvokeGenericMethodWrapper))
+                if (method.Name == k_InvokeGenericMethodWrapper)
                     invokeGenericMethodWrapperMethod = method;
 
-                if (method.Name == nameof(SerializationUtils.CallGenericMethod))
+                if (method.Name == k_CallGenericMethod)
                     callGenericMethodMethod = method;
             }
 
             if (invokeGenericMethodWrapperMethod == null)
             {
-                Debug.LogError($"Could not find {nameof(SerializationUtils.InvokeGenericMethodWrapper)}");
+                Console.Error.WriteLine($"Could not find {k_InvokeGenericMethodWrapper}");
                 return;
             }
 
             if (callGenericMethodMethod == null)
             {
-                Debug.LogError($"Could not find {nameof(SerializationUtils.CallGenericMethod)}");
+                Console.Error.WriteLine($"Could not find {k_CallGenericMethod}");
                 return;
             }
 
@@ -176,7 +200,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var firstBranch = instructions.FirstOrDefault(instruction => instruction.OpCode == OpCodes.Brfalse_S);
             if (firstBranch == null)
             {
-                Debug.LogError("Failed to find the branch we need to replace");
+                Console.Error.WriteLine("Failed to find the branch we need to replace");
                 return;
             }
 
@@ -236,7 +260,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             il.Append(ret);
         }
 
-        static void PostProcessAssembly(ModuleDefinition module, Assembly assembly, List<TypeContainer> componentTypes)
+        static void PostProcessAssembly(HashSet<string> namespaceExceptions, HashSet<string> typeExceptions,
+            ModuleDefinition module, Assembly assembly, List<TypeContainer> componentTypes)
         {
             var componentType = typeof(Component);
             var skipGeneration = typeof(SkipGeneration);
@@ -256,6 +281,26 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 var typeName = type.FullName;
                 if (string.IsNullOrEmpty(typeName))
+                    continue;
+
+                if (typeExceptions.Contains(typeName))
+                    continue;
+
+                var partOfNamespaceException = false;
+                var typeNamespace = type.Namespace;
+                if (!string.IsNullOrEmpty(typeNamespace))
+                {
+                    foreach (var exception in namespaceExceptions)
+                    {
+                        if (typeNamespace.Contains(exception))
+                        {
+                            partOfNamespaceException = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (partOfNamespaceException)
                     continue;
 
                 componentTypes.Add(new TypeContainer

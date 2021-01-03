@@ -1,10 +1,11 @@
 ﻿using System.Collections.Generic;
+using Unity.RuntimeSceneSerialization.Internal.Prefabs;
 using Unity.RuntimeSceneSerialization.Prefabs;
 using UnityEditor;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
-namespace Unity.RuntimeSceneSerialization
+namespace Unity.RuntimeSceneSerialization.EditorInternal
 {
     [CustomEditor(typeof(PrefabMetadata))]
     class PrefabMetadataEditor : Editor
@@ -74,9 +75,6 @@ namespace Unity.RuntimeSceneSerialization
                             break;
                         case IRuntimePrefabOverride<char> charProperty:
                             EditorGUILayout.TextField("Value", charProperty.Value.ToString());
-                            break;
-                        case IRuntimePrefabOverride<Color> colorProperty:
-                            EditorGUILayout.ColorField("Value", colorProperty.Value);
                             break;
                         case IRuntimePrefabOverride<float> floatProperty:
                             EditorGUILayout.FloatField("Value", floatProperty.Value);

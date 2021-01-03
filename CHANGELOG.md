@@ -4,6 +4,25 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.1-preview] - 2021-01-03
+### Added
+- Runtime Scene Serialization section in Project Settings for choosing AOT code generation exceptions
+
+### Changed
+- Gracefully fail for component types which do not have generated PropertyBags
+- Rename MissingMonoBehaviour to MissingComponent
+
+## [0.2.0-preview] - 2020-12-14
+### Updated
+- Introduce `SerializationMetadata` to replace static fields like `AssetPack.CurrentAssetPack`
+- Reduce public API surface
+- Add XML Documents where necessary
+- Re-organize folder structure
+
+## [0.1.5-preview] - 2020-10-22
+### Fixed
+- Compile errors in 2020.2
+
 ## [0.1.4-preview] - 2020-09-25
 ### Added
 - RegisterPropertyBag and RegisterPropertyBagRecursively methods
@@ -44,6 +63,6 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 
 ## [0.1.0-preview] - 2020-08-27
 
-### This is the first release of *Runtime Scene Serialization*.
+### This is the first release of *Unity Runtime Scene Serialization*.
 
 This package contains a basic API for saving and loading Unity scenes to and from JSON in Player builds

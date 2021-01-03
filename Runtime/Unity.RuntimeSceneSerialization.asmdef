@@ -15,9 +15,24 @@
     "defineConstraints": [],
     "versionDefines": [
         {
+            "name": "com.unity.modules.animation",
+            "expression": "1.0.0",
+            "define": "INCLUDE_ANIMATION"
+        },
+        {
+            "name": "com.unity.modules.physics",
+            "expression": "1.0.0",
+            "define": "INCLUDE_PHYSICS"
+        },
+        {
             "name": "com.unity.textmeshpro",
             "expression": "2.0.0",
             "define": "INCLUDE_TEXT_MESH_PRO"
+        },
+        {
+            "name": "com.unity.ugui",
+            "expression": "1.0.0",
+            "define": "INCLUDE_UGUI"
         }
     ],
     "noEngineReferences": false

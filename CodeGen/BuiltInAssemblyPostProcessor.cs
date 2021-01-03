@@ -18,8 +18,15 @@ using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
+    /// <summary>
+    /// ILPostProcessor responsible for generating property bags for types built into Unity
+    /// </summary>
     class BuiltInAssemblyPostProcessor : ILPostProcessor
     {
+#if UNITY_2020_2_OR_NEWER
+        static readonly int k_EditorAssemblyPathSuffix = "/Contents/Managed/UnityEngine/UnityEditor.CoreModule.dll".Length;
+#endif
+
         static readonly Type k_NativePropertyAttributeType = ReflectionUtils.FindType(type => type.Name == "NativePropertyAttribute");
         static readonly Type k_NativeNameAttributeType = ReflectionUtils.FindType(type => type.Name == "NativeNameAttribute");
         static readonly Type k_IgnoreAttributeType = ReflectionUtils.FindType(type => type.Name == "IgnoreAttribute");
@@ -47,7 +54,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static bool ShouldProcess(ICompiledAssembly compiledAssembly)
         {
-            if (!compiledAssembly.IsIl2CppEnabled())
+            if (!compiledAssembly.RequiresCodegen())
                 return false;
 
             return compiledAssembly.Name == CodeGenUtils.ExternalPropertyBagAssemblyName;
@@ -99,17 +106,29 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             // TODO: collection pools
             var fields = new List<FieldInfo>();
             var properties = new List<PropertyInfo>();
+#if UNITY_2020_2_OR_NEWER
+            var editorAssemblyPath = Assembly.GetAssembly(typeof(EditorApplication)).Location;
+            var editorPath = editorAssemblyPath.Substring(0, editorAssemblyPath.Length - k_EditorAssemblyPathSuffix);
+#else
             var editorPath = EditorApplication.applicationContentsPath;
+#endif
             var serializableContainerTypes = new HashSet<Type>();
+            var assemblyExceptions = RuntimeSerializationSettingsUtils.GetAssemblyExceptions();
+            var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
+            var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
             ReflectionUtils.ForEachAssembly(assembly =>
             {
+                Console.WriteLine($"Process assembly {assembly.FullName}");
                 if (assembly.IsDynamic)
                     return;
 
                 if (!CodeGenUtils.IsBuiltInAssembly(assembly, editorPath))
                     return;
 
-                PostProcessAssembly(assembly, fields, properties, serializableContainerTypes);
+                if (assemblyExceptions.Contains(assembly.FullName))
+                    return;
+
+                PostProcessAssembly(namespaceExceptions, typeExceptions, assembly, fields, properties, serializableContainerTypes);
             });
 
             serializableContainerTypes.ExceptWith(k_IgnoredTypes);
@@ -164,6 +183,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 TypeDefinition propertyType;
 
+                // ReSharper disable once ConvertIfStatementToConditionalTernaryExpression
                 if (member.IsPublic())
                 {
                     propertyType = Property.Generate(context, containerType, member, nameOverride);
@@ -207,7 +227,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return propertyBagType;
         }
 
-        static void PostProcessAssembly(Assembly assembly, List<FieldInfo> fields, List<PropertyInfo> properties, HashSet<Type> serializableContainerTypes)
+        static void PostProcessAssembly(HashSet<string> namespaceExceptions, HashSet<string> typeExceptions, Assembly assembly,
+            List<FieldInfo> fields, List<PropertyInfo> properties, HashSet<Type> serializableContainerTypes)
         {
             foreach (var type in assembly.ExportedTypes)
             {
@@ -222,6 +243,26 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 var typeName = type.FullName;
                 if (string.IsNullOrEmpty(typeName))
+                    continue;
+
+                if (typeExceptions.Contains(typeName))
+                    continue;
+
+                var partOfNamespaceException = false;
+                var typeNamespace = type.Namespace;
+                if (!string.IsNullOrEmpty(typeNamespace))
+                {
+                    foreach (var exception in namespaceExceptions)
+                    {
+                        if (typeNamespace.Contains(exception))
+                        {
+                            partOfNamespaceException = true;
+                            break;
+                        }
+                    }
+                }
+
+                if (partOfNamespaceException)
                     continue;
 
                 var includedProperties = ReflectedPropertyBagUtils.GetIncludedProperties(typeName);

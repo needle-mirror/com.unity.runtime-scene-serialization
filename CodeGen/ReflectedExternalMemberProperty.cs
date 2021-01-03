@@ -5,12 +5,12 @@ using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
 using Unity.Properties.CodeGen;
-using Unity.RuntimeSceneSerialization.CodeGen;
+using Unity.RuntimeSceneSerialization.Internal;
 using UnityEngine;
 using MethodAttributes = Mono.Cecil.MethodAttributes;
 using TypeAttributes = Mono.Cecil.TypeAttributes;
 
-namespace Unity.RuntimeSceneSerialization
+namespace Unity.RuntimeSceneSerialization.CodeGen
 {
     static class ReflectedExternalProperty
     {
@@ -126,6 +126,7 @@ namespace Unity.RuntimeSceneSerialization
                 // GetField
                 il.Emit(OpCodes.Callvirt, context.TypeGetFieldMethodReference.Value);
             }
+            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
             else if (member is PropertyDefinition)
             {
                 // GetProperty

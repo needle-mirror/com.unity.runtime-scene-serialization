@@ -4,10 +4,10 @@ using UnityEditor;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
-namespace Unity.RuntimeSceneSerialization
+namespace Unity.RuntimeSceneSerialization.EditorInternal
 {
     [CustomEditor(typeof(AssetPack))]
-    public class AssetPackEditor : Editor
+    class AssetPackEditor : Editor
     {
         const int k_Indent = 15;
         bool m_AssetsExpanded;

@@ -1,9 +1,9 @@
 ﻿using NUnit.Framework;
 using System;
 
-namespace Unity.MARSCompanionMobile.Tests
+namespace Unity.RuntimeSceneSerialization.Tests
 {
-    public class RuntimeSceneSerializationTests
+    class RuntimeSceneSerializationTests
     {
 
         [Test]

@@ -3,8 +3,7 @@
     "references": [
         "Unity.Properties",
         "Unity.RuntimeSceneSerialization",
-        "Unity.Serialization",
-        "Unity.XRTools.Utils"
+        "Unity.Serialization"
     ],
     "includePlatforms": [
         "Editor"

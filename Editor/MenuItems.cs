@@ -4,9 +4,9 @@ using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 
-namespace Unity.RuntimeSceneSerialization
+namespace Unity.RuntimeSceneSerialization.EditorInternal
 {
-    public static class MenuItems
+    static class MenuItems
     {
         const string k_Extension = "json";
 
@@ -41,13 +41,11 @@ namespace Unity.RuntimeSceneSerialization
                 assetPack.Clear();
             }
 
-            EditorMetadata.Reset();
             var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(activeScene.path);
             if (sceneAsset != null)
                 assetPack.SceneAsset = sceneAsset;
 
-            AssetPack.CurrentAssetPack = assetPack;
-            File.WriteAllText(path, SerializationUtils.SerializeScene(activeScene));
+            File.WriteAllText(path, SceneSerialization.SerializeScene(activeScene, assetPack));
 
             if (created)
             {
@@ -61,8 +59,6 @@ namespace Unity.RuntimeSceneSerialization
                 else if (AssetDatabase.LoadAssetAtPath<AssetPack>(assetPackPath) != null)
                     AssetDatabase.DeleteAsset(assetPackPath);
             }
-
-            AssetPack.CurrentAssetPack = null;
 
             AssetDatabase.SaveAssets();
             AssetDatabase.Refresh();
@@ -82,7 +78,7 @@ namespace Unity.RuntimeSceneSerialization
                 var assetPack = AssetDatabase.LoadAssetAtPath<AssetPack>(assetPackPath);
                 var jsonText = File.ReadAllText(path);
                 var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene);
-                SerializationUtils.ImportScene(jsonText, assetPack);
+                SceneSerialization.ImportScene(jsonText, assetPack);
                 scene.name = Path.GetFileNameWithoutExtension(path);
             }
         }

@@ -4,6 +4,9 @@ using UnityEngine;
 
 namespace Unity.RuntimeSceneSerialization
 {
+    /// <summary>
+    /// Utility class for setting up special property bags to override defaults set up by Properties API
+    /// </summary>
     public static class PropertyBagOverrides
     {
         // Override Bounds to use m_Center and m_Extent "NativeName" for properties
@@ -89,6 +92,9 @@ namespace Unity.RuntimeSceneSerialization
         }
 #endif
 
+        /// <summary>
+        /// Initialize property bag overrides for Bounds and GameObject (call this after InitializeOnLoad)
+        /// </summary>
         public static void InitializeOverrides()
         {
             PropertyBag.Register(new BoundsPropertyBagOverride());

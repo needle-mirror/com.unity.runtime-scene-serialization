@@ -3,6 +3,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
@@ -11,13 +12,18 @@ using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
+using UnityEditor;
 using UnityEngine;
+using TypeAttributes = Mono.Cecil.TypeAttributes;
 using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
     static class CodeGenUtils
     {
+        internal const string RuntimeSerializationAssemblyName = "Unity.RuntimeSceneSerialization";
+        internal const string RuntimeSerializationCodeGenAssemblyName = "Unity.RuntimeSceneSerialization.CodeGen";
+        internal const string RuntimeSerializationEditorAssemblyName = "Unity.RuntimeSceneSerialization.Editor";
         internal const string ExternalPropertyBagAssemblyName = "Unity.RuntimeSceneSerialization.Generated";
         static readonly string k_SkipGenerationAttributeName = typeof(SkipGeneration).FullName;
 
@@ -48,6 +54,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         const string k_EnableIl2CppDefine = "ENABLE_IL2CPP";
         const string k_NetDotsDefine = "NET_DOTS";
         const string k_NUnitFrameworkAssemblyName = "nunit.framework";
+
+#if UNITY_2020_1_OR_NEWER
+        static bool s_Initialized;
+#endif
 
         internal static bool RequiresCodegen(this ICompiledAssembly compiledAssembly)
         {
@@ -116,7 +126,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             {
                 var resolvedType = type.Resolve();
                 if (resolvedType != null)
-                    isSerializable = resolvedType.IsEnum || (resolvedType.Attributes & Mono.Cecil.TypeAttributes.Serializable) != 0;
+                    isSerializable = resolvedType.IsEnum || (resolvedType.Attributes & TypeAttributes.Serializable) != 0;
 #if PROPERTY_GENERATION_LOG
                 else
                     Console.Error.WriteLine($"{type} in {type.Module.Assembly.Name} cannot be resolved");
@@ -140,7 +150,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var isPrimitive = TypeIsPrimitive(type, typeName);
             var isAbstractOrInterface = type.IsAbstract || type.IsInterface;
             isSerializableContainer = !(isPrimitive || isAbstractOrInterface || isOpenGeneric)
-                && ((type.Attributes & Mono.Cecil.TypeAttributes.Serializable) != 0 || type.Namespace == "UnityEngine");
+                && ((type.Attributes & TypeAttributes.Serializable) != 0 || type.Namespace == "UnityEngine");
 
             k_SerializableContainerTypes[typeName] = isSerializableContainer;
 
@@ -188,7 +198,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return isAssignable;
         }
 
-        internal static bool IsAssignableToComponent(TypeReference memberType)
+        static bool IsAssignableToComponent(TypeReference memberType)
         {
             var typeName = memberType.FullName;
             if (typeName == k_ComponentTypeName)
@@ -446,6 +456,65 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return true;
         }
 
+        internal static IEnumerable<TypeDefinition> PostProcessAssembly(HashSet<string> namespaceExceptions,
+            HashSet<string> typeExceptions, AssemblyDefinition assembly, bool includeAllContainers = false)
+        {
+            foreach (var module in assembly.Modules)
+            {
+                foreach (var type in module.GetTypes())
+                {
+                    try
+                    {
+                        if (type.IsAbstract || type.IsInterface)
+                            continue;
+
+                        if (type.HasGenericParameters && !type.IsGenericInstance)
+                            continue;
+
+                        var (hasSkipGenerationAttribute, hasCompilerGeneratedAttribute) = GetSerializationAttributes(type);
+                        if (hasSkipGenerationAttribute || hasCompilerGeneratedAttribute)
+                            continue;
+
+                        if (!IsAssignableToComponent(type))
+                        {
+                            if (!includeAllContainers || !IsSerializableContainer(type))
+                                continue;
+                        }
+
+                        var typeName = type.FullName;
+                        if (string.IsNullOrEmpty(typeName))
+                            continue;
+
+                        if (typeExceptions.Contains(typeName))
+                            continue;
+
+                        var partOfNamespaceException = false;
+                        var typeNamespace = type.Namespace;
+                        if (!string.IsNullOrEmpty(typeNamespace))
+                        {
+                            foreach (var exception in namespaceExceptions)
+                            {
+                                if (typeNamespace.Contains(exception))
+                                {
+                                    partOfNamespaceException = true;
+                                    break;
+                                }
+                            }
+                        }
+
+                        if (partOfNamespaceException)
+                            continue;
+                    }
+                    catch
+                    {
+                        // Ignored
+                    }
+
+                    yield return type;
+                }
+            }
+        }
+
         internal static string GetAssemblyQualifiedName(this TypeReference typeReference)
         {
             var resolvedType = typeReference.Resolve();
@@ -516,20 +585,27 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return attributes;
         }
 
-        public static bool IsBuiltInAssembly(Assembly assembly, string editorPath)
+        public static void ForEachBuiltInAssembly(Action<Assembly> callback)
         {
-            return assembly.Location.Replace("\\", "/").Contains(editorPath);
-        }
-
-        internal static bool IsTestAssembly(ICompiledAssembly assembly)
-        {
-            foreach (var reference in assembly.References)
+            var editorAssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(EditorApplication)).Location);
+            if (string.IsNullOrEmpty(editorAssemblyPath))
             {
-                if (reference.Contains(k_NUnitFrameworkAssemblyName))
-                    return true;
+                Console.WriteLine("Error: Could not find editor assemblies");
+                return;
             }
 
-            return false;
+            foreach (var path in Directory.GetFiles(editorAssemblyPath, "*.dll", SearchOption.AllDirectories))
+            {
+                try
+                {
+                    var assembly = Assembly.LoadFrom(path);
+                    callback(assembly);
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
         }
 
         public static bool IsTestAssembly(Assembly assembly)
@@ -542,6 +618,47 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             return false;
         }
+
+#if UNITY_2020_1_OR_NEWER
+        [InitializeOnLoadMethod]
+        static void InitializeOnLoad()
+        {
+            s_Initialized = true;
+        }
+
+        public static void CallInitializeOnLoadMethodsIfNeeded()
+        {
+            if (s_Initialized)
+                return;
+
+            s_Initialized = true;
+
+            var serializationAssembly = typeof(TransformPropertyBagDefinition).Assembly;
+            foreach (var type in serializationAssembly.GetTypes())
+            {
+                CallInitializersForType(type);
+            }
+        }
+
+        static void CallInitializersForType(Type type)
+        {
+            foreach (var method in type.GetMethods(BindingFlags.Static | BindingFlags.Public | BindingFlags.NonPublic))
+            {
+                if (method.GetCustomAttribute<InitializeOnLoadMethodAttribute>() != null
+                    || method.GetCustomAttribute<RuntimeInitializeOnLoadMethodAttribute>() != null)
+                {
+                    try
+                    {
+                        method.Invoke(null, null);
+                    }
+                    catch
+                    {
+                        // ignored
+                    }
+                }
+            }
+        }
+#endif
     }
 
     static class MetadataTokenProviderExtensions

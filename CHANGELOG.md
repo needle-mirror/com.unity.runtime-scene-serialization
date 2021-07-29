@@ -4,6 +4,21 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.2.3-preview] - 2021-07-29
+### Fixed
+- Issues with settings provider
+
+## [0.2.2-preview] - 2021-07-29
+### Added
+- RuntimeSerializationLogs.txt to collect statistics on codegen
+
+### Changed
+- All assemblies are now excluded from codegen by default, and must be explicitly included in Runtime Serialization Settings
+
+### Fixed
+- Issues in ILPostProcessor code caused by changes introduced in Unity 2020
+- Issue where assembly exceptions were not preventing codegen on user assemblies
+
 ## [0.2.1-preview] - 2021-01-03
 ### Added
 - Runtime Scene Serialization section in Project Settings for choosing AOT code generation exceptions

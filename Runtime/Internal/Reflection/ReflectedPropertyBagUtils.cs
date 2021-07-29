@@ -47,7 +47,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
         {
             var typeName = type.FullName;
             if (string.IsNullOrEmpty(typeName))
+            {
+                Console.WriteLine("Error: Encountered null or empty type name in SetIncludedProperties");
                 return;
+            }
 
             k_IncludedProperties[typeName] = properties;
         }

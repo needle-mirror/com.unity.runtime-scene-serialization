@@ -11,8 +11,8 @@ using Unity.Properties.CodeGen;
 using Unity.Properties.CodeGen.Blocks;
 using Unity.RuntimeSceneSerialization.Internal;
 using Unity.XRTools.Utils;
-using UnityEditor;
 using UnityEngine;
+using Assembly = System.Reflection.Assembly;
 using MethodImplAttributes = System.Reflection.MethodImplAttributes;
 using UnityObject = UnityEngine.Object;
 
@@ -23,10 +23,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
     /// </summary>
     class BuiltInAssemblyPostProcessor : ILPostProcessor
     {
-#if UNITY_2020_2_OR_NEWER
-        static readonly int k_EditorAssemblyPathSuffix = "/Contents/Managed/UnityEngine/UnityEditor.CoreModule.dll".Length;
-#endif
-
         static readonly Type k_NativePropertyAttributeType = ReflectionUtils.FindType(type => type.Name == "NativePropertyAttribute");
         static readonly Type k_NativeNameAttributeType = ReflectionUtils.FindType(type => type.Name == "NativeNameAttribute");
         static readonly Type k_IgnoreAttributeType = ReflectionUtils.FindType(type => type.Name == "IgnoreAttribute");
@@ -93,6 +89,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!ShouldProcess(compiledAssembly))
                 return null;
 
+#if UNITY_2020_1_OR_NEWER
+            CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
+#endif
+
             using (var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly))
             {
                 return GeneratePropertyBags(assemblyDefinition, compiledAssembly.Defines);
@@ -101,31 +101,20 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static ILPostProcessResult GeneratePropertyBags(AssemblyDefinition compiledAssembly, string[] defines)
         {
-            var context = new Context(compiledAssembly.MainModule, defines);
-
-            // TODO: collection pools
+            var module = compiledAssembly.MainModule;
+            var context = new Context(module, defines);
             var fields = new List<FieldInfo>();
             var properties = new List<PropertyInfo>();
-#if UNITY_2020_2_OR_NEWER
-            var editorAssemblyPath = Assembly.GetAssembly(typeof(EditorApplication)).Location;
-            var editorPath = editorAssemblyPath.Substring(0, editorAssemblyPath.Length - k_EditorAssemblyPathSuffix);
-#else
-            var editorPath = EditorApplication.applicationContentsPath;
-#endif
             var serializableContainerTypes = new HashSet<Type>();
-            var assemblyExceptions = RuntimeSerializationSettingsUtils.GetAssemblyExceptions();
+            var assemblyInclusions = RuntimeSerializationSettingsUtils.GetAssemblyInclusions();
             var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
             var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
-            ReflectionUtils.ForEachAssembly(assembly =>
+            CodeGenUtils.ForEachBuiltInAssembly(assembly =>
             {
-                Console.WriteLine($"Process assembly {assembly.FullName}");
                 if (assembly.IsDynamic)
                     return;
 
-                if (!CodeGenUtils.IsBuiltInAssembly(assembly, editorPath))
-                    return;
-
-                if (assemblyExceptions.Contains(assembly.FullName))
+                if (!assemblyInclusions.Contains(assembly.GetName().Name))
                     return;
 
                 PostProcessAssembly(namespaceExceptions, typeExceptions, assembly, fields, properties, serializableContainerTypes);
@@ -137,6 +126,12 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return null;
 
             GeneratePropertyBagsForSerializableTypes(context, serializableContainerTypes);
+
+            if (!Directory.Exists("Logs"))
+                Directory.CreateDirectory("Logs");
+
+            File.AppendAllText("Logs/RuntimeSerializationLogs.txt",
+                $"Generated {serializableContainerTypes.Count} property bags in {compiledAssembly.Name}\n");
 
             return CreatePostProcessResult(compiledAssembly);
         }

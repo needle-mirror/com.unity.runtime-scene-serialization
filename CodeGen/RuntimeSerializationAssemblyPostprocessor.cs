@@ -2,17 +2,15 @@
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
-using Unity.XRTools.Utils;
 using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
-using Assembly = System.Reflection.Assembly;
-using OpCodes = Mono.Cecil.Cil.OpCodes;
 using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
@@ -29,11 +27,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             public int BaseTypeCount;
         }
 
-#if UNITY_2020_2_OR_NEWER
-        static readonly int k_EditorAssemblyPathSuffix = "/Contents/Managed/UnityEngine/UnityEditor.CoreModule.dll".Length;
-#endif
-
-        const string k_SerializationAssemblyName = "Unity.RuntimeSceneSerialization";
         const string k_InvokeGenericMethodWrapper = "InvokeGenericMethodWrapper";
         const string k_CallGenericMethod = "CallGenericMethod";
         static readonly string k_SerializationUtilsTypeName = typeof(SerializationUtils).FullName;
@@ -54,7 +47,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!compiledAssembly.RequiresCodegen())
                 return false;
 
-            return compiledAssembly.Name == k_SerializationAssemblyName;
+            return compiledAssembly.Name == CodeGenUtils.RuntimeSerializationAssemblyName;
         }
 
         static RuntimeSerializationAssemblyPostprocessor()
@@ -77,7 +70,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 var assemblies = UnityEditor.Compilation.CompilationPipeline.GetAssemblies(AssembliesType.PlayerWithoutTestAssemblies);
                 foreach (var assembly in assemblies)
                 {
-                    k_PlayerAssemblies.Add(assembly.name);
+                    k_PlayerAssemblies.Add(Path.GetFullPath(assembly.outputPath));
                 }
 
                 File.WriteAllText(tempAssembliesPath, string.Join(",", k_PlayerAssemblies));
@@ -117,6 +110,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!ShouldProcess(compiledAssembly))
                 return null;
 
+#if UNITY_2020_1_OR_NEWER
+            CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
+#endif
+
             using (var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly))
             {
                 return ProcessAssembly(assemblyDefinition);
@@ -125,34 +122,77 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static ILPostProcessResult ProcessAssembly(AssemblyDefinition compiledAssembly)
         {
+            if (k_PlayerAssemblies.Count == 0)
+            {
+                Console.WriteLine("Error: No Player assemblies");
+                return null;
+            }
+
             var module = compiledAssembly.MainModule;
             var componentTypes = new List<TypeContainer>();
 
-#if UNITY_2020_2_OR_NEWER
-            var editorAssemblyPath = Assembly.GetAssembly(typeof(EditorApplication)).Location;
-            var editorPath = editorAssemblyPath.Substring(0, editorAssemblyPath.Length - k_EditorAssemblyPathSuffix);
-#else
-            var editorPath = EditorApplication.applicationContentsPath;
-#endif
-
-            var assemblyExceptions = RuntimeSerializationSettingsUtils.GetAssemblyExceptions();
+            var assemblyInclusions = RuntimeSerializationSettingsUtils.GetAssemblyInclusions();
             var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
             var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
-            ReflectionUtils.ForEachAssembly(assembly =>
+            var stringType = module.ImportReference(typeof(string));
+            var internalsVisibleToAttributeConstructor = module.ImportReference(
+                typeof(InternalsVisibleToAttribute).GetConstructor(new[] { typeof(string) }));
+
+            assemblyInclusions.Add(CodeGenUtils.RuntimeSerializationAssemblyName);
+
+            var searchPaths = new HashSet<string>();
+            foreach (var path in k_PlayerAssemblies)
+            {
+                searchPaths.Add(Path.GetDirectoryName(path));
+            }
+
+            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
             {
                 if (assembly.IsDynamic)
-                    return;
+                    continue;
 
-                if (!CodeGenUtils.IsBuiltInAssembly(assembly, editorPath) && !k_PlayerAssemblies.Contains(assembly.GetName().Name))
-                    return;
+                var location = assembly.Location;
+                if (string.IsNullOrEmpty(location))
+                    continue;
 
-                if (assemblyExceptions.Contains(assembly.FullName))
-                    return;
+                var fullPath = Path.GetDirectoryName(location);
+                if (!string.IsNullOrEmpty(fullPath))
+                    searchPaths.Add(fullPath);
+            }
 
-                PostProcessAssembly(namespaceExceptions, typeExceptions, module, assembly, componentTypes);
-            });
+            var assemblyResolver = new DefaultAssemblyResolver();
+            foreach (var path in searchPaths)
+            {
+                assemblyResolver.AddSearchDirectory(path);
+            }
+
+            foreach (var path in k_PlayerAssemblies)
+            {
+                var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters{AssemblyResolver = assemblyResolver});
+                var name = assembly.Name.Name;
+                if (!assemblyInclusions.Contains(name))
+                    continue;
+
+                var attribute = new CustomAttribute(internalsVisibleToAttributeConstructor);
+                attribute.ConstructorArguments.Add(new CustomAttributeArgument(stringType, name));
+                compiledAssembly.CustomAttributes.Add(attribute);
+
+                foreach (var type in CodeGenUtils.PostProcessAssembly(namespaceExceptions, typeExceptions, assembly))
+                {
+                    componentTypes.Add(new TypeContainer
+                    {
+                        TypeReference = module.ImportReference(type),
+                        BaseTypeCount = GetBaseTypeCount(type)
+                    });
+                }
+            }
 
             PostProcessGenericMethodWrapper(componentTypes, module);
+            if (!Directory.Exists("Logs"))
+                Directory.CreateDirectory("Logs");
+
+            File.AppendAllText("Logs/RuntimeSerializationLogs.txt",
+                $"Added {componentTypes.Count} components to GenericMethodWrapper\n");
 
             return CreatePostProcessResult(compiledAssembly);
         }
@@ -260,65 +300,14 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             il.Append(ret);
         }
 
-        static void PostProcessAssembly(HashSet<string> namespaceExceptions, HashSet<string> typeExceptions,
-            ModuleDefinition module, Assembly assembly, List<TypeContainer> componentTypes)
-        {
-            var componentType = typeof(Component);
-            var skipGeneration = typeof(SkipGeneration);
-            foreach (var type in assembly.ExportedTypes)
-            {
-                if (type.IsAbstract || type.IsInterface)
-                    continue;
-
-                if (type.IsGenericType)
-                    continue;
-
-                if (!componentType.IsAssignableFrom(type))
-                    continue;
-
-                if (type.IsDefined(skipGeneration, false))
-                    continue;
-
-                var typeName = type.FullName;
-                if (string.IsNullOrEmpty(typeName))
-                    continue;
-
-                if (typeExceptions.Contains(typeName))
-                    continue;
-
-                var partOfNamespaceException = false;
-                var typeNamespace = type.Namespace;
-                if (!string.IsNullOrEmpty(typeNamespace))
-                {
-                    foreach (var exception in namespaceExceptions)
-                    {
-                        if (typeNamespace.Contains(exception))
-                        {
-                            partOfNamespaceException = true;
-                            break;
-                        }
-                    }
-                }
-
-                if (partOfNamespaceException)
-                    continue;
-
-                componentTypes.Add(new TypeContainer
-                {
-                    TypeReference = module.ImportReference(type),
-                    BaseTypeCount = GetBaseTypeCount(type)
-                });
-            }
-        }
-
-        static int GetBaseTypeCount(Type type)
+        static int GetBaseTypeCount(TypeDefinition type)
         {
             var count = 0;
             var baseType = type.BaseType;
             while (baseType != null)
             {
                 count++;
-                baseType = baseType.BaseType;
+                baseType = baseType.Resolve().BaseType;
             }
 
             return count;

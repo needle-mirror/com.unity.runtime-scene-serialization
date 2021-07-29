@@ -45,7 +45,14 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 // no boxing
                 foreach (var property in propertyList.GetProperties(ref container))
                 {
-                    ((IPropertyAccept<TContainer>) property).Accept(this, ref container);
+                    try
+                    {
+                        ((IPropertyAccept<TContainer>)property).Accept(this, ref container);
+                    }
+                    catch
+                    {
+                        // ignore
+                    }
                 }
                 return;
             }

@@ -1,6 +1,4 @@
-﻿#define INCLUDE_ALL_SERIALIZABLE_CONTAINERS
-
-using System;
+﻿using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -16,7 +14,6 @@ using UnityEngine;
 using UnityEngine.Scripting;
 using FieldAttributes = Mono.Cecil.FieldAttributes;
 using MethodAttributes = Mono.Cecil.MethodAttributes;
-using PropertyBag = Unity.Properties.CodeGen.Blocks.PropertyBag;
 using TypeAttributes = Mono.Cecil.TypeAttributes;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
@@ -26,7 +23,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
     /// </summary>
     class UserAssemblyPostProcessor : ILPostProcessor
     {
-        static readonly MethodInfo k_GetTypeMethod = typeof(Type).GetMethods(BindingFlags.Public | BindingFlags.Static).First(x => x.GetParameters().Length == 1 && x.Name == nameof(Type.GetType));
+        static readonly MethodInfo k_GetTypeMethod = typeof(Type).GetMethods(BindingFlags.Public | BindingFlags.Static)
+            .First(x => x.GetParameters().Length == 1 && x.Name == nameof(Type.GetType));
+
         static readonly HashSet<string> k_IgnoredTypeNames = new HashSet<string>
         {
             typeof(AnimationCurve).FullName,
@@ -35,24 +34,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             typeof(Vector3Int).FullName,
             typeof(Rect).FullName,
             typeof(RectInt).FullName,
-            typeof(BoundsInt).FullName
-        };
-
-        static readonly HashSet<string> k_IgnoredAssemblies = new HashSet<string>
-        {
-            "Unity.RuntimeSceneSerialization.CodeGen",
-            "Unity.Burst",
-            "Unity.Mathematics",
-            "Unity.Properties",
-            "Unity.Properties.UI",
-            "Unity.Properties.Reflection",
-            "Unity.Jobs",
-            "Unity.Collections",
-            "Unity.EditorXR",
-            "Unity.XR.ARFoundation",
-            "Unity.XR.Management",
-            "Unity.XR.ARSubsystems",
-            "Unity.InputSystem"
+            typeof(BoundsInt).FullName,
+            typeof(Version).FullName
         };
 
         public override ILPostProcessor GetInstance()
@@ -71,20 +54,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return false;
 
             var assemblyName = compiledAssembly.Name;
-            if (assemblyName == CodeGenUtils.ExternalPropertyBagAssemblyName)
-                return false;
-
-            // TODO: Debug type load exception and other assembly-specific issues
-            if (k_IgnoredAssemblies.Contains(assemblyName))
-                return false;
-
-            if (RuntimeSerializationSettingsUtils.GetAssemblyExceptions().Contains(assemblyName))
-                return false;
-
-            if (CodeGenUtils.IsTestAssembly(compiledAssembly))
-                return false;
-
-            return true;
+            switch (assemblyName)
+            {
+                case CodeGenUtils.RuntimeSerializationAssemblyName:
+                    return true;
+                case CodeGenUtils.ExternalPropertyBagAssemblyName:
+                case CodeGenUtils.RuntimeSerializationEditorAssemblyName:
+                case CodeGenUtils.RuntimeSerializationCodeGenAssemblyName:
+                    return false;
+                default:
+                    return RuntimeSerializationSettingsUtils.GetAssemblyInclusions().Contains(assemblyName);
+            }
         }
 
         static AssemblyDefinition CreateAssemblyDefinition(ICompiledAssembly compiledAssembly)
@@ -120,6 +100,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!ShouldProcess(compiledAssembly))
                 return null;
 
+#if UNITY_2020_1_OR_NEWER
+            CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
+#endif
+
             using (var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly))
             {
                 return GeneratePropertyBags(assemblyDefinition, compiledAssembly.Defines);
@@ -128,72 +112,33 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static ILPostProcessResult GeneratePropertyBags(AssemblyDefinition compiledAssembly, string[] defines)
         {
-            var context = new Context(compiledAssembly.MainModule, defines);
+            var module = compiledAssembly.MainModule;
+            var context = new Context(module, defines);
             var serializableTypes = new HashSet<TypeDefinition>();
-            PostProcessAssembly(compiledAssembly, serializableTypes);
-            serializableTypes.RemoveWhere(definition => k_IgnoredTypeNames.Contains(definition.FullName));
+            var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
+            var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
+
+            foreach (var type in CodeGenUtils.PostProcessAssembly(namespaceExceptions, typeExceptions, compiledAssembly, true))
+            {
+                if (type.Module != module || k_IgnoredTypeNames.Contains(type.FullName))
+                    continue;
+
+                serializableTypes.Add(type);
+                PostProcessType(type, serializableTypes);
+            }
+
             if (serializableTypes.Count == 0)
                 return null;
 
             GeneratePropertyBagsForSerializableTypes(context, serializableTypes);
 
+            if (!Directory.Exists("Logs"))
+                Directory.CreateDirectory("Logs");
+
+            File.AppendAllText("Logs/RuntimeSerializationLogs.txt",
+                $"Generated {serializableTypes.Count} property bags in {compiledAssembly.Name}\n");
+
             return CreatePostProcessResult(compiledAssembly);
-        }
-
-        static void PostProcessAssembly(AssemblyDefinition assembly, HashSet<TypeDefinition> serializableTypes)
-        {
-            var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
-            var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
-            foreach (var module in assembly.Modules)
-            {
-                foreach (var type in module.GetTypes())
-                {
-                    if (type.IsAbstract || type.IsInterface)
-                        continue;
-
-                    if (type.HasGenericParameters && !type.IsGenericInstance)
-                        continue;
-
-                    var (hasSkipGenerationAttribute, hasCompilerGeneratedAttribute) = CodeGenUtils.GetSerializationAttributes(type);
-                    if (hasSkipGenerationAttribute || hasCompilerGeneratedAttribute)
-                        continue;
-
-                    if (!CodeGenUtils.IsAssignableToComponent(type))
-                    {
-#if INCLUDE_ALL_SERIALIZABLE_CONTAINERS
-                        if (!CodeGenUtils.IsSerializableContainer(type))
-#endif
-                            continue;
-                    }
-
-                    var typeName = type.FullName;
-                    if (string.IsNullOrEmpty(typeName))
-                        continue;
-
-                    if (typeExceptions.Contains(typeName))
-                        continue;
-
-                    var partOfNamespaceException = false;
-                    var typeNamespace = type.Namespace;
-                    if (!string.IsNullOrEmpty(typeNamespace))
-                    {
-                        foreach (var exception in namespaceExceptions)
-                        {
-                            if (typeNamespace.Contains(exception))
-                            {
-                                partOfNamespaceException = true;
-                                break;
-                            }
-                        }
-                    }
-
-                    if (partOfNamespaceException)
-                        continue;
-
-                    serializableTypes.Add(type);
-                    PostProcessType(type, serializableTypes);
-                }
-            }
         }
 
         static void PostProcessType(TypeDefinition type, HashSet<TypeDefinition> serializableTypes)
@@ -262,18 +207,30 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     externalContainerTypes[type.FullName] = externalContainer;
             }
 
+            var moduleTypes = module.Types;
             foreach (var type in serializableContainerTypes)
             {
                 Console.WriteLine($"GENERATE FOR {type}");
-                var containerType = type.Module == context.Module ? type : context.ImportReference(type);
+                var containerType = type.Module == module ? type : context.ImportReference(type);
                 externalContainerTypes.TryGetValue(type.FullName, out var externalContainer);
                 var propertyBagType = GeneratePropertyBag(context, containerType, externalContainer, externalContainerTypes, getTypeMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference, listType);
-                context.Module.Types.Add(propertyBagType);
+                moduleTypes.Add(propertyBagType);
                 propertyBagDefinitions.Add(new Tuple<TypeDefinition, TypeReference>(propertyBagType, externalContainer ?? containerType));
             }
 
             var propertyBagRegistryTypeDefinition = PropertyBagRegistry.Generate(context, propertyBagDefinitions);
-            context.Module.Types.Add(propertyBagRegistryTypeDefinition);
+            var containsRegistry = false;
+            foreach (var type in moduleTypes)
+            {
+                if (type.FullName == propertyBagRegistryTypeDefinition.FullName)
+                {
+                    containsRegistry = true;
+                    break;
+                }
+            }
+
+            if (!containsRegistry)
+                moduleTypes.Add(propertyBagRegistryTypeDefinition);
         }
 
         static TypeDefinition TryGenerateExternalContainerType(TypeDefinition type, Context context, TypeReference objectReference, MethodReference preserveAttributeConstructor)

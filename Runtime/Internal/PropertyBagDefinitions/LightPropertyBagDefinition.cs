@@ -36,6 +36,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
             light.spotAngle = light.spotAngle;
             light.innerSpotAngle = light.innerSpotAngle;
             light.cookieSize = light.cookieSize;
+            light.cookie = light.cookie;
             light.shadows = light.shadows;
             light.shadowResolution = light.shadowResolution;
             light.shadowCustomResolution = light.shadowCustomResolution;

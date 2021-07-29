@@ -1,5 +1,3 @@
-#define INCLUDE_ALL_SERIALIZABLE_CONTAINERS
-
 using System;
 using System.Collections.Generic;
 using System.Linq;
@@ -16,19 +14,19 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         class AssemblyRow
         {
             public readonly string DisplayName;
-            public readonly string FullName;
+            public readonly string Name;
 
             bool m_Expanded;
             readonly NamespaceGroup m_RootNamespaceGroup = new NamespaceGroup();
-            readonly Action<HashSet<string>> m_GetAllNamespaces;
-            readonly Action<HashSet<string>> m_GetAllTypes;
-            readonly Action<HashSet<string>> m_RemoveAllNamespaces;
-            readonly Action<HashSet<string>> m_RemoveAllTypes;
+            readonly Action<string, HashSet<string>> m_GetAllNamespaces;
+            readonly Action<string, HashSet<string>> m_GetAllTypes;
+            readonly Action<string, HashSet<string>> m_RemoveAllNamespaces;
+            readonly Action<string, HashSet<string>> m_RemoveAllTypes;
 
             public AssemblyRow(Assembly assembly)
             {
-                FullName = assembly.FullName;
-                DisplayName = $"Assembly: {assembly.GetName().Name}";
+                Name = assembly.GetName().Name;
+                DisplayName = $"Assembly: {Name}";
 
                 foreach (var type in assembly.GetTypes())
                 {
@@ -38,13 +36,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     if (type.IsGenericType)
                         continue;
 
-                    if (!typeof(Component).IsAssignableFrom(type))
-                    {
-#if INCLUDE_ALL_SERIALIZABLE_CONTAINERS
-                        if (!CodeGenUtils.IsSerializableContainer(type))
-#endif
-                            continue;
-                    }
+                    if (!typeof(Component).IsAssignableFrom(type) && !CodeGenUtils.IsSerializableContainer(type))
+                        continue;
 
                     var typeName = type.FullName;
                     if (string.IsNullOrEmpty(typeName))
@@ -78,9 +71,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 m_RemoveAllTypes = RemoveAllTypes;
             }
 
-            public void Draw(HashSet<string> assemblyExceptions, HashSet<string> namespaceExceptions, HashSet<string> typeExceptions)
+            public void Draw(HashSet<string> assemblyInclusions, HashSet<string> namespaceExceptions, HashSet<string> typeExceptions)
             {
-                var included = !assemblyExceptions.Contains(FullName);
+                var included = assemblyInclusions.Contains(Name);
                 using (new GUILayout.HorizontalScope())
                 {
                     var wasExpanded = m_Expanded;
@@ -93,18 +86,22 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                     if (included && !nowIncluded)
                     {
-                        assemblyExceptions.Add(FullName);
+                        assemblyInclusions.Remove(Name);
+
+                        // Alt-click on the toggle will also exclude namespaces
                         if (Event.current.alt)
-                            m_RootNamespaceGroup.GetAllNamespacesRecursively(namespaceExceptions);
+                            m_RootNamespaceGroup.AddAllNamespacesRecursively(string.Empty, namespaceExceptions);
 
                         RuntimeSerializationSettingsUtils.SaveSettings();
                     }
 
                     if (!included && nowIncluded)
                     {
-                        assemblyExceptions.Remove(FullName);
+                        assemblyInclusions.Add(Name);
+
+                        // Alt-click on the toggle will also include namespaces
                         if (Event.current.alt)
-                            m_RootNamespaceGroup.RemoveAllNamespacesRecursively(namespaceExceptions);
+                            m_RootNamespaceGroup.RemoveAllNamespacesRecursively(string.Empty, namespaceExceptions);
 
                         RuntimeSerializationSettingsUtils.SaveSettings();
                     }
@@ -128,14 +125,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 }
             }
 
-            void RemoveAllNamespaces(HashSet<string> namespaces)
+            void RemoveAllNamespaces(string prefix, HashSet<string> namespaces)
             {
-                m_RootNamespaceGroup.RemoveAllNamespacesRecursively(namespaces);
+                if (!string.IsNullOrEmpty(prefix))
+                    namespaces.Remove(prefix);
+
+                m_RootNamespaceGroup.RemoveAllNamespacesRecursively(prefix, namespaces);
             }
 
-            void RemoveAllTypes(HashSet<string> types)
+            void RemoveAllTypes(string prefix, HashSet<string> types)
             {
-                m_RootNamespaceGroup.RemoveAllTypesRecursively(types);
+                m_RootNamespaceGroup.RemoveAllTypesRecursively(prefix, types);
             }
 
             public int GetTypeCount()
@@ -146,14 +146,14 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return m_RootNamespaceGroup.GetTypeCountRecursively();
             }
 
-            public void GetAllNamespaces(HashSet<string> namespaces)
+            public void GetAllNamespaces(string prefix, HashSet<string> namespaces)
             {
-                m_RootNamespaceGroup.GetAllNamespacesRecursively(namespaces);
+                m_RootNamespaceGroup.AddAllNamespacesRecursively(prefix, namespaces);
             }
 
-            public void GetAllTypes(HashSet<string> type)
+            public void GetAllTypes(string prefix, HashSet<string> type)
             {
-                m_RootNamespaceGroup.GetAllTypesRecursively(type);
+                m_RootNamespaceGroup.AddAllTypesRecursively(prefix, type);
             }
         }
 
@@ -169,15 +169,15 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
             static readonly List<string> k_ToRemove = new List<string>();
-            readonly Action<HashSet<string>> m_GetAllTypesRecursively;
-            readonly Action<HashSet<string>> m_GetAllNamespacesRecursively;
-            readonly Action<HashSet<string>> m_RemoveAllNamespacesRecursively;
-            readonly Action<HashSet<string>> m_RemoveAllTypesRecursively;
+            readonly Action<string, HashSet<string>> m_AddAllTypesRecursively;
+            readonly Action<string, HashSet<string>> m_AddAllNamespacesRecursively;
+            readonly Action<string, HashSet<string>> m_RemoveAllNamespacesRecursively;
+            readonly Action<string, HashSet<string>> m_RemoveAllTypesRecursively;
 
             public NamespaceGroup()
             {
-                m_GetAllTypesRecursively = GetAllTypesRecursively;
-                m_GetAllNamespacesRecursively = GetAllNamespacesRecursively;
+                m_AddAllTypesRecursively = AddAllTypesRecursively;
+                m_AddAllNamespacesRecursively = AddAllNamespacesRecursively;
                 m_RemoveAllNamespacesRecursively = RemoveAllNamespacesRecursively;
                 m_RemoveAllTypesRecursively = RemoveAllTypesRecursively;
             }
@@ -211,8 +211,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                             namespaceExceptions.Add(fullName);
                             if (Event.current.alt)
                             {
-                                GetAllNamespacesRecursively(prefix, name, namespaceExceptions);
-                                GetAllTypesRecursively(typeExceptions);
+                                AddAllNamespacesRecursively(prefix, namespaceExceptions);
+                                AddAllTypesRecursively(prefix, typeExceptions);
                             }
 
                             RuntimeSerializationSettingsUtils.SaveSettings();
@@ -223,8 +223,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                             namespaceExceptions.Remove(fullName);
                             if (Event.current.alt)
                             {
-                                RemoveAllNamespacesRecursively(prefix, name, namespaceExceptions);
-                                RemoveAllTypesRecursively(typeExceptions);
+                                RemoveAllNamespacesRecursively(prefix, namespaceExceptions);
+                                RemoveAllTypesRecursively(prefix, typeExceptions);
                             }
 
                             RuntimeSerializationSettingsUtils.SaveSettings();
@@ -237,8 +237,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                         {
                             using (new EditorGUI.DisabledScope(!included))
                             {
-                                DrawButtons(namespaceExceptions, "namespaces", m_GetAllNamespacesRecursively, m_RemoveAllNamespacesRecursively);
-                                DrawButtons(typeExceptions, "types", m_GetAllTypesRecursively, m_RemoveAllTypesRecursively);
+                                if (m_Children.Count > 0)
+                                    DrawButtons(namespaceExceptions, "namespaces", m_AddAllNamespacesRecursively, m_RemoveAllNamespacesRecursively, fullName);
+
+                                DrawButtons(typeExceptions, "types", m_AddAllTypesRecursively, m_RemoveAllTypesRecursively, fullName);
                             }
 
                             foreach (var kvp in m_Children)
@@ -255,30 +257,20 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 }
             }
 
-            public void RemoveAllNamespacesRecursively(HashSet<string> namespaces)
+            public void RemoveAllNamespacesRecursively(string prefix, HashSet<string> namespaces)
             {
-                RemoveAllNamespacesRecursively(string.Empty, string.Empty, namespaces);
-            }
-
-            void RemoveAllNamespacesRecursively(string prefix, string name, HashSet<string> namespaces)
-            {
-                var fullName = name;
-                if (!string.IsNullOrEmpty(prefix))
-                    fullName = $"{prefix}.{name}";
-
-                if (!string.IsNullOrEmpty(fullName))
-                {
-                    namespaces.Remove(fullName);
-                    return;
-                }
-
                 foreach (var kvp in m_Children)
                 {
-                    kvp.Value.RemoveAllNamespacesRecursively(fullName, kvp.Key, namespaces);
+                    var fullName = kvp.Key;
+                    if (!string.IsNullOrEmpty(prefix))
+                        fullName = $"{prefix}.{fullName}";
+
+                    namespaces.Remove(fullName);
+                    kvp.Value.RemoveAllNamespacesRecursively(fullName, namespaces);
                 }
             }
 
-            public void RemoveAllTypesRecursively(HashSet<string> types)
+            public void RemoveAllTypesRecursively(string prefix, HashSet<string> types)
             {
                 foreach (var type in m_Types)
                 {
@@ -287,10 +279,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 foreach (var kvp in m_Children)
                 {
-                    kvp.Value.RemoveAllTypesRecursively(types);
+                    kvp.Value.RemoveAllTypesRecursively(prefix, types);
                 }
             }
-
 
             public void PostProcessRecursively()
             {
@@ -320,7 +311,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return count;
             }
 
-            public void GetAllTypesRecursively(HashSet<string> types)
+            public void AddAllTypesRecursively(string prefix, HashSet<string> types)
             {
                 foreach (var type in m_Types)
                 {
@@ -329,26 +320,21 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 foreach (var kvp in m_Children)
                 {
-                    kvp.Value.GetAllTypesRecursively(types);
+                    kvp.Value.AddAllTypesRecursively(prefix, types);
                 }
             }
 
-            public void GetAllNamespacesRecursively(HashSet<string> namespaces)
+            public void AddAllNamespacesRecursively(string prefix, HashSet<string> namespaces)
             {
-                GetAllNamespacesRecursively(string.Empty, string.Empty, namespaces);
-            }
-            void GetAllNamespacesRecursively(string prefix, string name, HashSet<string> namespaces)
-            {
-                var fullName = name;
-                if (!string.IsNullOrEmpty(prefix))
-                    fullName = $"{prefix}.{name}";
-
-                if (!string.IsNullOrEmpty(fullName))
-                    namespaces.Add(fullName);
-
                 foreach (var kvp in m_Children)
                 {
-                    kvp.Value.GetAllNamespacesRecursively(fullName, kvp.Key, namespaces);
+                    var fullName = kvp.Key;
+                    if (!string.IsNullOrEmpty(prefix))
+                        fullName = $"{prefix}.{fullName}";
+
+                    namespaces.Add(fullName);
+
+                    kvp.Value.AddAllNamespacesRecursively(fullName, namespaces);
                 }
             }
 
@@ -403,20 +389,20 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         const string k_SettingsPath = "Project/Runtime Scene Serialization";
         const float k_ToggleWidth = 15f;
         const int k_Indent = 15;
-        static readonly Action<HashSet<string>> k_ClearExceptions = ClearExceptions;
+        static readonly Action<string, HashSet<string>> k_ClearExceptions = ClearExceptions;
 
         static readonly string[] k_IgnoredAssemblies =
         {
-            "Unity.RuntimeSceneSerialization",
-            "Unity.RuntimeSceneSerialization.Editor",
-            "Unity.RuntimeSceneSerialization.CodeGen",
-            "Unity.RuntimeSceneSerialization.Generated"
+            CodeGenUtils.RuntimeSerializationAssemblyName,
+            CodeGenUtils.RuntimeSerializationEditorAssemblyName,
+            CodeGenUtils.RuntimeSerializationCodeGenAssemblyName,
+            CodeGenUtils.ExternalPropertyBagAssemblyName
         };
 
         readonly List<AssemblyRow> m_AssemblyRows = new List<AssemblyRow>();
-        readonly Action<HashSet<string>> m_ExcludeAllAssemblies;
-        readonly Action<HashSet<string>> m_ExcludeAllNamespaces;
-        readonly Action<HashSet<string>> m_ExcludeAllTypes;
+        readonly Action<string, HashSet<string>> m_ExcludeAllAssemblies;
+        readonly Action<string, HashSet<string>> m_ExcludeAllNamespaces;
+        readonly Action<string, HashSet<string>> m_ExcludeAllTypes;
 
         RuntimeSerializationSettingsProvider()
             : base(k_SettingsPath, SettingsScope.Project, new List<string> { "serialization" })
@@ -436,7 +422,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         public override void OnActivate(string searchContext, VisualElement rootElement)
         {
             base.OnActivate(searchContext, rootElement);
-            RuntimeSerializationSettingsUtils.ClearExceptionCache();
+            RuntimeSerializationSettingsUtils.ClearSettingsCache();
             m_AssemblyRows.Clear();
             ReflectionUtils.ForEachAssembly(assembly =>
             {
@@ -457,64 +443,65 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         public override void OnGUI(string searchContext)
         {
             base.OnGUI(searchContext);
-            GUILayout.Label("AOT Code Generation Exceptions", EditorStyles.boldLabel);
-            var assemblyExceptions = RuntimeSerializationSettingsUtils.GetAssemblyExceptions();
+            GUILayout.Label("AOT Code Generation Settings", EditorStyles.boldLabel);
+            var assemblyInclusions = RuntimeSerializationSettingsUtils.GetAssemblyInclusions();
             var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
             var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
 
-            DrawButtons(assemblyExceptions, "assemblies", m_ExcludeAllAssemblies, k_ClearExceptions);
+            DrawButtons(assemblyInclusions, "assemblies", k_ClearExceptions, m_ExcludeAllAssemblies);
             DrawButtons(namespaceExceptions, "namespaces", m_ExcludeAllNamespaces, k_ClearExceptions);
             DrawButtons(typeExceptions, "types", m_ExcludeAllTypes, k_ClearExceptions);
 
             foreach (var assemblyRow in m_AssemblyRows)
             {
-                assemblyRow.Draw(assemblyExceptions, namespaceExceptions, typeExceptions);
+                assemblyRow.Draw(assemblyInclusions, namespaceExceptions, typeExceptions);
             }
         }
 
-        static void ClearExceptions(HashSet<string> exceptions)
+        static void ClearExceptions(string prefix, HashSet<string> exceptions)
         {
             exceptions.Clear();
         }
 
-        void ExcludeAllAssemblies(HashSet<string> exceptions)
+        void ExcludeAllAssemblies(string prefix, HashSet<string> exceptions)
         {
             foreach (var assemblyRow in m_AssemblyRows)
             {
-                exceptions.Add(assemblyRow.FullName);
+                exceptions.Add(assemblyRow.Name);
             }
         }
 
-        void ExcludeAllNamespaces(HashSet<string> exceptions)
+        void ExcludeAllNamespaces(string prefix, HashSet<string> exceptions)
         {
             foreach (var assemblyRow in m_AssemblyRows)
             {
-                assemblyRow.GetAllNamespaces(exceptions);
+                assemblyRow.GetAllNamespaces(prefix, exceptions);
             }
         }
 
-        void ExcludeAllTypes(HashSet<string> exceptions)
+        void ExcludeAllTypes(string prefix, HashSet<string> exceptions)
         {
             foreach (var assemblyRow in m_AssemblyRows)
             {
-                assemblyRow.GetAllTypes(exceptions);
+                assemblyRow.GetAllTypes(prefix, exceptions);
             }
         }
 
-        static void DrawButtons(HashSet<string> exceptions, string type, Action<HashSet<string>> excludeAll, Action<HashSet<string>> includeAll)
+        static void DrawButtons(HashSet<string> set, string type,
+            Action<string, HashSet<string>> excludeAll, Action<string, HashSet<string>> includeAll, string prefix = null)
         {
             using (new GUILayout.HorizontalScope())
             {
                 GUILayout.Space(EditorGUI.indentLevel * k_Indent);
                 if (GUILayout.Button($"Exclude all {type}"))
                 {
-                    excludeAll(exceptions);
+                    excludeAll(prefix, set);
                     RuntimeSerializationSettingsUtils.SaveSettings();
                 }
 
                 if (GUILayout.Button($"Include all {type}"))
                 {
-                    includeAll(exceptions);
+                    includeAll(prefix, set);
                     RuntimeSerializationSettingsUtils.SaveSettings();
                 }
             }

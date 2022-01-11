@@ -1,0 +1,21 @@
+{
+    "name": "Unity.RuntimeSceneSerialization.Tests.Playmode",
+    "references": [
+        "Unity.Properties",
+        "Unity.RuntimeSceneSerialization",
+        "Unity.RuntimeSceneSerialization.Tests.Common",
+        "Unity.Serialization"
+    ],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [
+
+    ],
+    "excludePlatforms": [],
+    "allowUnsafeCode": false,
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": []
+}

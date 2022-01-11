@@ -512,6 +512,11 @@ namespace Unity.RuntimeSceneSerialization.Internal
                         m_SerializedTypeProvider.Events.Add(new DeserializationEvent(EventType.Exception, new ArgumentException(e.Message)));
                         return;
                     }
+                    catch (Exception)
+                    {
+                        // Ignored
+                        return;
+                    }
 
                     using (new SerializedContainerMetadataScope(this, metadata))
                     using (new UnsafeViewScope(this, view))

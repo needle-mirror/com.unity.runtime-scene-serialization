@@ -1,7 +1,9 @@
 {
-    "name": "Unity.RuntimeSceneSerialization.RuntimeTests",
+    "name": "Unity.RuntimeSceneSerialization.Tests.Common",
     "references": [
-
+        "Unity.Properties",
+        "Unity.RuntimeSceneSerialization",
+        "Unity.Serialization"
     ],
     "optionalUnityReferences": [
         "TestAssemblies"

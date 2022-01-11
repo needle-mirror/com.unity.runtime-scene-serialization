@@ -4,6 +4,23 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.2-preview] - 2022-01-11
+### Fixed
+- Warnings about inconsistent line endings
+
+## [0.3.1-preview] - 2021-12-09
+### Fixed
+- Issue where scenes with only prefabs would not create an asset pack on save
+
+## [0.3.0-preview] - 2021-12-06
+### Fixed
+- NullReferenceException when deserializing certain scenes
+- Compile errors in 2022.1
+
+## [0.2.4-preview] - 2021-10-05
+### Added
+- SerializedRenderSettings struct and m_RenderSettings field in SceneContainer
+
 ## [0.2.3-preview] - 2021-07-29
 ### Fixed
 - Issues with settings provider

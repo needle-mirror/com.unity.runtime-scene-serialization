@@ -39,7 +39,9 @@ namespace Unity.RuntimeSceneSerialization
             Action<List<GameObject>> onAfterDeserialize = null)
         {
             var metadata = new SerializationMetadata(assetPack);
-            var container = new SceneContainer(SceneManager.GetActiveScene(), metadata, false);
+            var renderSettings = new SerializedRenderSettings();
+            renderSettings.UpdateValuesFromRenderSettings();
+            var container = new SceneContainer(SceneManager.GetActiveScene(), metadata, renderSettings, false);
             var sceneRoot = new GameObject();
             var sceneRootTransform = sceneRoot.transform;
             container.SceneRootTransform = sceneRootTransform;
@@ -74,6 +76,9 @@ namespace Unity.RuntimeSceneSerialization
                     // Moving this root object out of its parent will activate all newly created GameObjects
                     root.transform.SetParent(null, false);
                 }
+
+                container.ApplyRenderSettings();
+                DynamicGI.UpdateEnvironment();
             }
 
             UnityObjectUtils.Destroy(sceneRoot);
@@ -164,12 +169,13 @@ namespace Unity.RuntimeSceneSerialization
         /// Scene must be loaded and valid
         /// </summary>
         /// <param name="scene">The scene to serialize</param>
+        /// <param name="renderSettings">The scene's render settings</param>
         /// <param name="assetPack">The asset pack used to store and retrieve assets</param>
         /// <returns>The serialized scene as a Json string</returns>
-        public static string SerializeScene(Scene scene, AssetPack assetPack = null)
+        public static string SerializeScene(Scene scene, SerializedRenderSettings renderSettings = default, AssetPack assetPack = null)
         {
             var metadata = new SerializationMetadata(assetPack);
-            return ToJson(new SceneContainer(scene, metadata), metadata);
+            return ToJson(new SceneContainer(scene, metadata, renderSettings), metadata);
         }
 
 #if !NET_DOTS && !ENABLE_IL2CPP

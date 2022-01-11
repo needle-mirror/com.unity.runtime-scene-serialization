@@ -41,11 +41,12 @@ namespace Unity.RuntimeSceneSerialization.EditorInternal
                 assetPack.Clear();
             }
 
+            var renderSettings = SerializedRenderSettings.CreateFromActiveScene();
             var sceneAsset = AssetDatabase.LoadAssetAtPath<SceneAsset>(activeScene.path);
             if (sceneAsset != null)
                 assetPack.SceneAsset = sceneAsset;
 
-            File.WriteAllText(path, SceneSerialization.SerializeScene(activeScene, assetPack));
+            File.WriteAllText(path, SceneSerialization.SerializeScene(activeScene, renderSettings, assetPack));
 
             if (created)
             {

@@ -17,6 +17,9 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
         [SerializeField]
         List<GameObjectContainer> m_RootGameObjects;
+
+        [SerializeField]
+        SerializedRenderSettings m_RenderSettings;
         // ReSharper restore Unity.RedundantSerializeFieldAttribute
 
         public Transform SceneRootTransform { get; set; }
@@ -29,15 +32,21 @@ namespace Unity.RuntimeSceneSerialization.Internal
         // ReSharper disable once UnusedMember.Global
         public SceneContainer() { }
 
+        /// <summary>
+        /// Check the format version of this scene container
+        /// </summary>
+        /// <exception cref="FormatException">Thrown if the parsed scene's version doesn't match the hard-coded version</exception>
         public void CheckFormatVersion()
         {
             if (m_FormatVersion != k_FormatVersion)
                 throw new FormatException($"Serialization format mismatch. Expected {k_FormatVersion} but was {m_FormatVersion}.");
         }
 
-        public SceneContainer(Scene scene, SerializationMetadata metadata, bool collectGameObjects = true)
+        public SceneContainer(Scene scene, SerializationMetadata metadata,
+            SerializedRenderSettings renderSettings = default, bool collectGameObjects = true)
         {
             m_RootGameObjects = new List<GameObjectContainer>();
+            m_RenderSettings = renderSettings;
 
             if (collectGameObjects)
             {
@@ -60,5 +69,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 k_SavedRoots.Clear();
             }
         }
+
+        /// <summary>
+        /// Apply this scene container's render settings to the current render settings
+        /// </summary>
+        public void ApplyRenderSettings() { m_RenderSettings.ApplyValuesToRenderSettings(); }
     }
 }

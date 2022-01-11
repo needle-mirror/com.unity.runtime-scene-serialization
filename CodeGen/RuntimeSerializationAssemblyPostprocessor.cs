@@ -155,6 +155,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (string.IsNullOrEmpty(location))
                     continue;
 
+                k_PlayerAssemblies.Add(location);
+
                 var fullPath = Path.GetDirectoryName(location);
                 if (!string.IsNullOrEmpty(fullPath))
                     searchPaths.Add(fullPath);

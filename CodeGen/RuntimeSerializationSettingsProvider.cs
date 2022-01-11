@@ -18,8 +18,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             bool m_Expanded;
             readonly NamespaceGroup m_RootNamespaceGroup = new NamespaceGroup();
-            readonly Action<string, HashSet<string>> m_GetAllNamespaces;
-            readonly Action<string, HashSet<string>> m_GetAllTypes;
+            readonly Action<string, HashSet<string>> m_AddAllNamespaces;
+            readonly Action<string, HashSet<string>> m_AddAllTypes;
             readonly Action<string, HashSet<string>> m_RemoveAllNamespaces;
             readonly Action<string, HashSet<string>> m_RemoveAllTypes;
 
@@ -65,8 +65,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 }
 
                 m_RootNamespaceGroup.PostProcessRecursively();
-                m_GetAllNamespaces = GetAllNamespaces;
-                m_GetAllTypes = GetAllTypes;
+                m_AddAllNamespaces = AddAllNamespaces;
+                m_AddAllTypes = AddAllTypes;
                 m_RemoveAllNamespaces = RemoveAllNamespaces;
                 m_RemoveAllTypes = RemoveAllTypes;
             }
@@ -113,8 +113,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     {
                         using (new EditorGUI.DisabledScope(!included))
                         {
-                            DrawButtons(namespaceExceptions, "namespaces", m_GetAllNamespaces, m_RemoveAllNamespaces);
-                            DrawButtons(namespaceExceptions, "types", m_GetAllTypes, m_RemoveAllTypes);
+                            DrawButtons(namespaceExceptions, "namespaces", m_AddAllNamespaces, m_RemoveAllNamespaces);
+                            DrawButtons(typeExceptions, "types", m_AddAllTypes, m_RemoveAllTypes);
                         }
 
                         foreach (var kvp in m_RootNamespaceGroup.Children)
@@ -146,12 +146,12 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return m_RootNamespaceGroup.GetTypeCountRecursively();
             }
 
-            public void GetAllNamespaces(string prefix, HashSet<string> namespaces)
+            public void AddAllNamespaces(string prefix, HashSet<string> namespaces)
             {
                 m_RootNamespaceGroup.AddAllNamespacesRecursively(prefix, namespaces);
             }
 
-            public void GetAllTypes(string prefix, HashSet<string> type)
+            public void AddAllTypes(string prefix, HashSet<string> type)
             {
                 m_RootNamespaceGroup.AddAllTypesRecursively(prefix, type);
             }
@@ -257,7 +257,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 }
             }
 
-            public void RemoveAllNamespacesRecursively(string prefix, HashSet<string> namespaces)
+            public void RemoveAllNamespacesRecursively(string prefix, HashSet<string> namespaceExceptions)
             {
                 foreach (var kvp in m_Children)
                 {
@@ -265,21 +265,21 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     if (!string.IsNullOrEmpty(prefix))
                         fullName = $"{prefix}.{fullName}";
 
-                    namespaces.Remove(fullName);
-                    kvp.Value.RemoveAllNamespacesRecursively(fullName, namespaces);
+                    namespaceExceptions.Remove(fullName);
+                    kvp.Value.RemoveAllNamespacesRecursively(fullName, namespaceExceptions);
                 }
             }
 
-            public void RemoveAllTypesRecursively(string prefix, HashSet<string> types)
+            public void RemoveAllTypesRecursively(string prefix, HashSet<string> typeExceptions)
             {
                 foreach (var type in m_Types)
                 {
-                    types.Remove(type.FullName);
+                    typeExceptions.Remove(type.FullName);
                 }
 
                 foreach (var kvp in m_Children)
                 {
-                    kvp.Value.RemoveAllTypesRecursively(prefix, types);
+                    kvp.Value.RemoveAllTypesRecursively(prefix, typeExceptions);
                 }
             }
 
@@ -311,20 +311,20 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return count;
             }
 
-            public void AddAllTypesRecursively(string prefix, HashSet<string> types)
+            public void AddAllTypesRecursively(string prefix, HashSet<string> typeExceptions)
             {
                 foreach (var type in m_Types)
                 {
-                    types.Add(type.FullName);
+                    typeExceptions.Add(type.FullName);
                 }
 
                 foreach (var kvp in m_Children)
                 {
-                    kvp.Value.AddAllTypesRecursively(prefix, types);
+                    kvp.Value.AddAllTypesRecursively(prefix, typeExceptions);
                 }
             }
 
-            public void AddAllNamespacesRecursively(string prefix, HashSet<string> namespaces)
+            public void AddAllNamespacesRecursively(string prefix, HashSet<string> namespaceExceptions)
             {
                 foreach (var kvp in m_Children)
                 {
@@ -332,9 +332,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     if (!string.IsNullOrEmpty(prefix))
                         fullName = $"{prefix}.{fullName}";
 
-                    namespaces.Add(fullName);
+                    namespaceExceptions.Add(fullName);
 
-                    kvp.Value.AddAllNamespacesRecursively(fullName, namespaces);
+                    kvp.Value.AddAllNamespacesRecursively(fullName, namespaceExceptions);
                 }
             }
 
@@ -475,7 +475,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         {
             foreach (var assemblyRow in m_AssemblyRows)
             {
-                assemblyRow.GetAllNamespaces(prefix, exceptions);
+                assemblyRow.AddAllNamespaces(prefix, exceptions);
             }
         }
 
@@ -483,7 +483,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         {
             foreach (var assemblyRow in m_AssemblyRows)
             {
-                assemblyRow.GetAllTypes(prefix, exceptions);
+                assemblyRow.AddAllTypes(prefix, exceptions);
             }
         }
 

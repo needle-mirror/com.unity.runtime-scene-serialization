@@ -174,9 +174,9 @@ namespace Unity.RuntimeSceneSerialization
         internal Dictionary<string, GameObject> Prefabs => m_PrefabDictionary;
 
         /// <summary>
-        /// The number of assets in in this AssetPack
+        /// The number of assets and prefabs in in this AssetPack
         /// </summary>
-        public int AssetCount => Assets.Count;
+        public int AssetCount => Assets.Count + Prefabs.Count;
 
         /// <summary>
         /// The associated SceneAsset for this AssetPack

@@ -510,6 +510,10 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 
         protected void SetProperty<TContainer>(ref TContainer container, string propertyPath, SerializationMetadata metadata)
         {
+#if !NET_DOTS && !ENABLE_IL2CPP
+            SceneSerialization.RegisterPropertyBag(typeof(TContainer));
+#endif
+
             // TODO: re-use the same visitor and tokenize path
             var visitor = new SetPropertyVisitor(this, propertyPath, metadata);
             PropertyContainer.Visit(ref container, visitor);

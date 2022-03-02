@@ -276,9 +276,13 @@ namespace Unity.RuntimeSceneSerialization
                 if (TryGetGUIDAndLocalFileIdentifier(obj, out guid, out fileId, warnIfMissing))
                 {
                     m_GuidMap[obj] = guid;
-                    asset = new Asset();
+                    if (!m_AssetDictionary.TryGetValue(guid, out asset))
+                    {
+                        asset = new Asset();
+                        m_AssetDictionary[guid] = asset;
+                    }
+
                     asset.AddAssetMetadata(obj, fileId);
-                    m_AssetDictionary[guid] = asset;
                     return;
                 }
 

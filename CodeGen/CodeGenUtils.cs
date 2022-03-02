@@ -577,7 +577,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 // Override name if [NativeName("m_NewName)] is used
                 if (attributeTypeName == k_NativeNameTypeName)
-                    nameOverride = attribute.ConstructorArguments?[0].Value as string;
+                {
+                    var nativeName = attribute.ConstructorArguments?[0].Value as string;
+                    if (string.IsNullOrEmpty(nativeName))
+                        continue;
+
+                    // Fix issue with NativeName in Matrix4x4 (NativeName is "m_Data[0]")
+                    if (nativeName.Contains('['))
+                        continue;
+
+                    nameOverride = nativeName;
+                }
             }
 
             attributes = (hasSerializeField, hasIgnore, nameOverride);

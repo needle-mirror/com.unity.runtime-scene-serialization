@@ -1,7 +1,7 @@
 {
   "name": "com.unity.runtime-scene-serialization",
   "displayName": "Unity Runtime Scene Serialization",
-  "version": "0.3.2-preview",
+  "version": "0.3.4-preview",
   "unity": "2019.3",
   "unityRelease": "0f6",
   "description": "Serialize and deserialize a Unity scene and its GameObjects and Components using a JSON format",
@@ -10,12 +10,15 @@
     "com.unity.serialization": "1.5.0-preview",
     "com.unity.xrtools.utils": "1.1.1"
   },
+  "upm": {
+    "changelog": "### Added,- Improvements to documentation explaining the use of AssetPacks,### Changed,- Use UnsafeBuffer instead of MemoryStream in deserialization methods for better performance"
+  },
   "upmCi": {
-    "footprint": "7945dc86d8dfccd45ae43d069099c08a3dfea260"
+    "footprint": "0537b170ecc1b0c53ec658cf0b002bed10c22327"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.runtime-scene-serialization.git",
     "type": "git",
-    "revision": "c7bc665b9bfba9cd6beff4c3ad24d2e380563bfc"
+    "revision": "aada809d028f1cfd5500a5dfdde9cba5db36ecdb"
   }
 }

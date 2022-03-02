@@ -1,13 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using Unity.Collections;
-using Unity.XRTools.Utils;
 using Unity.Properties;
 using Unity.Properties.Internal;
 using Unity.RuntimeSceneSerialization.Internal;
+using Unity.Serialization;
 using Unity.Serialization.Json;
+using Unity.XRTools.Utils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using EventType = Unity.Serialization.Json.EventType;
@@ -126,40 +125,45 @@ namespace Unity.RuntimeSceneSerialization
         /// <exception cref="Exception">Thrown if serialization failed</exception>
         public static T FromJson<T>(string jsonString)
         {
-            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString)))
+            unsafe
             {
-                using (var reader = new SerializedObjectReader(stream))
+                fixed (char* ptr = jsonString)
                 {
-                    reader.Read(out var document);
+                    var configuration = SerializationUtils.GetDefaultConfigurationForString(jsonString);
+                    using (var reader = new SerializedObjectReader(new UnsafeBuffer<char>(ptr, jsonString.Length), configuration))
+                    {
+                        reader.Read(out var document);
 
-                    k_Events.Clear();
-                    var visitor = new JsonSceneReader(new SerializationMetadata());
-                    visitor.SetView(document.AsUnsafe());
-                    visitor.SetEvents(k_Events);
-                    T value = default;
-                    var container = new PropertyWrapper<T>(value);
-                    try
-                    {
-                        using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
-                    }
-                    catch (Exception e)
-                    {
-                        k_Events.Add(new DeserializationEvent(EventType.Exception, e));
-                    }
-                    value = container.Value;
-
-                    var result = SerializationUtils.CreateResult(k_Events);
-                    if (!result.DidSucceed())
-                    {
-                        foreach (var @event in k_Events)
+                        k_Events.Clear();
+                        var visitor = new JsonSceneReader(new SerializationMetadata());
+                        visitor.SetView(document.AsUnsafe());
+                        visitor.SetEvents(k_Events);
+                        T value = default;
+                        var container = new PropertyWrapper<T>(value);
+                        try
                         {
-                            Debug.LogError(@event);
+                            using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
+                        }
+                        catch (Exception e)
+                        {
+                            k_Events.Add(new DeserializationEvent(EventType.Exception, e));
                         }
 
-                        throw new Exception("Failed to deserialize");
-                    }
+                        value = container.Value;
 
-                    return value;
+                        var result = SerializationUtils.CreateResult(k_Events);
+                        if (!result.DidSucceed())
+                        {
+                            foreach (var @event in k_Events)
+                            {
+                                Debug.LogError(@event);
+                            }
+
+                            throw new Exception("Failed to deserialize");
+                        }
+
+                        return value;
+                    }
                 }
             }
         }

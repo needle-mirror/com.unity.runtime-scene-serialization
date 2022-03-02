@@ -2,11 +2,14 @@
 // It takes care of adding the new scene file to the EditorBuildSettings and putting back the original state.
 
 using System;
+
+#if UNITY_EDITOR
 using System.Collections.Generic;
 using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+#endif
 
 namespace Unity.RuntimeSceneSerialization.Tests
 {

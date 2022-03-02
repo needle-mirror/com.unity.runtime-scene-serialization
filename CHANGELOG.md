@@ -4,6 +4,22 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.4-preview] - 2022-03-02
+### Added
+- Improvements to documentation explaining the use of AssetPacks
+
+### Changed
+- Use UnsafeBuffer instead of MemoryStream in deserialization methods for better performance
+
+## [0.3.3-preview] - 2022-02-15
+### Added
+- Improvements to documentation for AOT build steps
+
+### Fixed
+- Issue where assets were missing from Asset Packs on first save
+- Compile errors in player test builds
+- Issues with invalid field names in `NativeName` attribute (fields in Matrix4x4)
+
 ## [0.3.2-preview] - 2022-01-11
 ### Fixed
 - Warnings about inconsistent line endings

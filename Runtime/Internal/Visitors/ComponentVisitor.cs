@@ -1,7 +1,5 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.IO;
-using System.Text;
 using Unity.Properties;
 using Unity.Properties.Internal;
 using Unity.Serialization;
@@ -63,17 +61,22 @@ namespace Unity.RuntimeSceneSerialization.Internal
                             // For some reason, newlines are read as null characters which break parsing
                             jsonString = jsonString.Replace('\0', '\n');
 
-                            using (var stream = new MemoryStream(Encoding.UTF8.GetBytes(jsonString)))
-                            {
-                                using (var reader = new SerializedObjectReader(stream))
-                                {
-                                    reader.Read(out var document);
-                                    var componentVisitor = new ComponentVisitor(m_GameObject, document.AsUnsafe(),
-                                        null, m_SerializationMetadata);
 
-                                    Component missingComponent = null;
-                                    componentVisitor.ReadValue(ref missingComponent, document.AsUnsafe());
-                                    return missingComponent;
+                            unsafe
+                            {
+                                fixed (char* ptr = jsonString)
+                                {
+                                    var configuration = SerializationUtils.GetDefaultConfigurationForString(jsonString);
+                                    using (var reader = new SerializedObjectReader(new UnsafeBuffer<char>(ptr, jsonString.Length), configuration))
+                                    {
+                                        reader.Read(out var document);
+                                        var componentVisitor = new ComponentVisitor(m_GameObject, document.AsUnsafe(),
+                                            null, m_SerializationMetadata);
+
+                                        Component missingComponent = null;
+                                        componentVisitor.ReadValue(ref missingComponent, document.AsUnsafe());
+                                        return missingComponent;
+                                    }
                                 }
                             }
                         }

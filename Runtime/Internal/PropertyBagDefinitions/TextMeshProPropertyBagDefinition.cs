@@ -7,7 +7,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
 {
     static class TextMeshProPropertyBagDefinition
     {
-        [RuntimeInitializeOnLoadMethod]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 #if UNITY_EDITOR
         [UnityEditor.InitializeOnLoadMethod]
 #endif

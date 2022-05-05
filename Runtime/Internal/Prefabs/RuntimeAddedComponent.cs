@@ -48,10 +48,10 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 #if UNITY_EDITOR
         [InitializeOnLoadMethod]
         static void EditorInitializeOnLoad() { RegisterPropertyBag(); }
-        [RuntimeInitializeOnLoadMethod]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void InitializeOnLoad() { /* Do Nothing */ }
 #else
-        [RuntimeInitializeOnLoadMethod]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
         static void InitializeOnLoad() { RegisterPropertyBag(); }
 #endif
 

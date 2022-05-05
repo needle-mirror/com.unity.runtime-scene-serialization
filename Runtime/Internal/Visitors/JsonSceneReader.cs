@@ -459,6 +459,12 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 {
                     var p = view.AsPrimitiveView();
 
+                    if (value is decimal)
+                    {
+                        value = (TValue) (object) p.AsDecimal();
+                        break;
+                    }
+
                     if (p.IsIntegral())
                     {
                         if (p.IsSigned())
@@ -476,7 +482,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
                     }
                     else if (p.IsDecimal() || p.IsInfinity() || p.IsNaN())
                     {
-                        TypeConversion.TryConvert(p.AsFloat(), out value);
+                        if (value is double)
+                            TypeConversion.TryConvert(p.AsDouble(), out value);
+                        else
+                            TypeConversion.TryConvert(p.AsFloatSafe(), out value);
                     }
                     else if (p.IsBoolean())
                     {

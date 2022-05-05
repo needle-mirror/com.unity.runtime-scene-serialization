@@ -1,7 +1,7 @@
 {
   "name": "com.unity.runtime-scene-serialization",
   "displayName": "Unity Runtime Scene Serialization",
-  "version": "0.3.4-preview",
+  "version": "0.3.5-preview",
   "unity": "2019.3",
   "unityRelease": "0f6",
   "description": "Serialize and deserialize a Unity scene and its GameObjects and Components using a JSON format",
@@ -10,15 +10,22 @@
     "com.unity.serialization": "1.5.0-preview",
     "com.unity.xrtools.utils": "1.1.1"
   },
-  "upm": {
-    "changelog": "### Added,- Improvements to documentation explaining the use of AssetPacks,### Changed,- Use UnsafeBuffer instead of MemoryStream in deserialization methods for better performance"
+  "samples": [
+    {
+      "displayName": "Basic Asset Bundles",
+      "description": "Example code that demonstrates how to use AssetBundles to provide AssetPacks to Player builds",
+      "path": "Samples~/BasicAssetBundles"
+    }
+  ],
+  "_upm": {
+    "changelog": "### Added\n- SceneSerialization.FromJsonOverride method for deserializing to existing containers\n- Basic AssetBundles example\n\n### Fixed\n- Issues serializing very large or very small `ulong`, `decimal`, `double`, and `float` values\n- Issue where generated property bags for built-in types would be empty if those types had `UnityEngine.Object` fields or properties stripped.\n- Issues with importing scenes immediately on app start in Awake"
   },
   "upmCi": {
-    "footprint": "0537b170ecc1b0c53ec658cf0b002bed10c22327"
+    "footprint": "0d1fd9f2654f14f08e3214a2599011c27c417713"
   },
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.runtime-scene-serialization.git",
     "type": "git",
-    "revision": "aada809d028f1cfd5500a5dfdde9cba5db36ecdb"
+    "revision": "cdea2ade9b0edefc5e825564c90fc03e280e22a1"
   }
 }

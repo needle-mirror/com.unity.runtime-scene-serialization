@@ -9,6 +9,7 @@ using UnityEditor;
 using UnityEditor.SceneManagement;
 using UnityEngine;
 using UnityEngine.SceneManagement;
+using Unity.RuntimeSceneSerialization.Generated;
 #endif
 
 namespace Unity.RuntimeSceneSerialization.Tests
@@ -21,6 +22,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             var initScene = SceneManager.GetActiveScene();
             var scenePath = $"Assets/{sceneName}.unity";
             var scene = EditorSceneManager.NewScene(NewSceneSetup.EmptyScene, NewSceneMode.Additive);
+            var _ = new GameObject("Stub", typeof(Stub));
             codeToExecute();
             EditorSceneManager.SaveScene(scene, scenePath);
             EditorBuildSettingsScene[] sceneSettings = { new EditorBuildSettingsScene(scenePath, true) };

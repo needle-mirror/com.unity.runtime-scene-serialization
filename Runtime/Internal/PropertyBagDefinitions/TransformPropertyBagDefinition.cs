@@ -5,7 +5,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
 {
     static class TransformPropertyBagDefinition
     {
-        [RuntimeInitializeOnLoadMethod]
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 #if UNITY_EDITOR
         [UnityEditor.InitializeOnLoadMethod]
 #endif

@@ -94,5 +94,11 @@ namespace Unity.RuntimeSceneSerialization.Tests
 
             yield return null;
         }
+
+        [Test]
+        public void BasicTest()
+        {
+            Assert.IsTrue(true);
+        }
     }
 }

@@ -426,9 +426,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             m_AssemblyRows.Clear();
             ReflectionUtils.ForEachAssembly(assembly =>
             {
-                if (CodeGenUtils.IsTestAssembly(assembly))
-                    return;
-
                 if (k_IgnoredAssemblies.Contains(assembly.GetName().Name))
                     return;
 

@@ -2,6 +2,7 @@
 //Native serialization supports cycles with SerializeReference via a special "registry" listing all the distinct SR objects
 //and associated ids with them, so that it can detect and safely represent cycles
 // TODO: Support cycles
+// TODO: Investigate player builds
 
 // #define EXPECT_CYCLES_TO_WORK
 

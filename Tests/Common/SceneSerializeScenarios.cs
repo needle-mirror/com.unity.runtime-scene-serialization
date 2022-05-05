@@ -29,7 +29,10 @@ namespace Unity.RuntimeSceneSerialization.Tests
             yield return new BasicGameObject();
             yield return new NestedObjects();
             yield return new MonoBehaviourByValScenario();
+
+#if UNITY_EDITOR
             yield return new SerializedReferenceScenario();
+#endif
         }
     }
 
@@ -135,6 +138,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
         }
     }
 
+#if UNITY_EDITOR
     class SerializedReferenceScenario : ISceneSerializeTestScenario
     {
         public string Name => "SerializedReferenceScenario";
@@ -161,4 +165,5 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.AreEqual(1, assetPack.AssetCount);
         }
     }
+#endif
 }

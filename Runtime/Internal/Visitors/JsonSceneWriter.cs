@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Collections.Generic;
+using System.Globalization;
 using Unity.Properties;
 using Unity.Properties.Internal;
 using Unity.Serialization;
@@ -452,6 +453,24 @@ namespace Unity.RuntimeSceneSerialization.Internal
         void WriteValue<TValue>(ref TValue value, bool isRoot)
         {
             var runAdapters = !(isRoot && m_DisableRootAdapters);
+
+            switch (value)
+            {
+                //HACK: Work around incorrect primitive serialization
+                case ulong uLongValue:
+                    m_Writer.Write(uLongValue.ToString());
+                    return;
+                case float doubleValue:
+                    m_Writer.Write(doubleValue.ToString("G9", CultureInfo.InvariantCulture));
+                    return;
+                case double doubleValue:
+                    m_Writer.Write(doubleValue.ToString("G17", CultureInfo.InvariantCulture));
+                    return;
+                case decimal decimalValue:
+                    m_Writer.Write(decimalValue.ToString(CultureInfo.InvariantCulture));
+                    return;
+            }
+
             if (runAdapters && !RuntimeTypeInfoCache<TValue>.IsContainerType && m_Adapters.TrySerialize(m_Writer, ref value))
                 return;
 

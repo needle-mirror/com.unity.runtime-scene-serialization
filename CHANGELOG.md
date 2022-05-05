@@ -4,6 +4,16 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.3.5-preview] - 2022-05-05
+### Added
+- SceneSerialization.FromJsonOverride method for deserializing to existing containers
+- Basic AssetBundles example
+
+### Fixed
+- Issues serializing very large or very small `ulong`, `decimal`, `double`, and `float` values
+- Issue where generated property bags for built-in types would be empty if those types had `UnityEngine.Object` fields or properties stripped.
+- Issues with importing scenes immediately on app start in Awake
+
 ## [0.3.4-preview] - 2022-03-02
 ### Added
 - Improvements to documentation explaining the use of AssetPacks

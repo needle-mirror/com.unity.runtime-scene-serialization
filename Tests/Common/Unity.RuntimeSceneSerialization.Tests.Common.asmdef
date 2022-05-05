@@ -3,6 +3,7 @@
     "references": [
         "Unity.Properties",
         "Unity.RuntimeSceneSerialization",
+        "Unity.RuntimeSceneSerialization.Generated",
         "Unity.Serialization"
     ],
     "optionalUnityReferences": [

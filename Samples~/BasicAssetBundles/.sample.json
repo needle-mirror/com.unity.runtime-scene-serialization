@@ -1,0 +1,5 @@
+{
+	"displayName": "Basic Asset Bundles",
+	"description": "Example code that demonstrates how to use AssetBundles to provide AssetPacks to Player builds",
+	"createSeparatePackage": true
+}

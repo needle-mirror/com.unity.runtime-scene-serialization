@@ -618,17 +618,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             }
         }
 
-        public static bool IsTestAssembly(Assembly assembly)
-        {
-            foreach (var reference in assembly.GetReferencedAssemblies())
-            {
-                if (reference.FullName.Contains(k_NUnitFrameworkAssemblyName))
-                    return true;
-            }
-
-            return false;
-        }
-
 #if UNITY_2020_1_OR_NEWER
         [InitializeOnLoadMethod]
         static void InitializeOnLoad()

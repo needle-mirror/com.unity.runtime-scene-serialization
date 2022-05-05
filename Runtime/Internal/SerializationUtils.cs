@@ -73,6 +73,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 {
                     using (var reader = new SerializedObjectReader(new UnsafeBuffer<char>(ptr, jsonString.Length), GetDefaultConfigurationForString(jsonString)))
                     {
+#if !NET_DOTS && !ENABLE_IL2CPP
+                        SceneSerialization.RegisterPropertyBag(typeof(SceneContainer));
+#endif
+
                         reader.Read(out var document);
                         var container = new PropertyWrapper<SceneContainer>(value);
                         k_Events.Clear();

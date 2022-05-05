@@ -121,9 +121,23 @@ namespace Unity.RuntimeSceneSerialization
         /// </summary>
         /// <param name="jsonString">The Json string to be deserialized</param>
         /// <typeparam name="T">The type of value represented by the Json string</typeparam>
-        /// <returns></returns>
+        /// <returns>The deserialized value</returns>
         /// <exception cref="Exception">Thrown if serialization failed</exception>
         public static T FromJson<T>(string jsonString)
+        {
+            T value = default;
+            FromJsonOverride(jsonString, ref value);
+            return value;
+        }
+
+        /// <summary>
+        /// Alternative version of JsonSerialization.FromJson which uses JsonSceneReader
+        /// </summary>
+        /// <param name="jsonString">The Json string to be deserialized</param>
+        /// <param name="value">A reference of type T to use for populating the deserialized value</param>
+        /// <typeparam name="T">The type of value represented by the Json string</typeparam>
+        /// <exception cref="Exception">Thrown if serialization failed</exception>
+        public static void FromJsonOverride<T>(string jsonString, ref T value)
         {
             unsafe
             {
@@ -138,7 +152,6 @@ namespace Unity.RuntimeSceneSerialization
                         var visitor = new JsonSceneReader(new SerializationMetadata());
                         visitor.SetView(document.AsUnsafe());
                         visitor.SetEvents(k_Events);
-                        T value = default;
                         var container = new PropertyWrapper<T>(value);
                         try
                         {
@@ -161,8 +174,6 @@ namespace Unity.RuntimeSceneSerialization
 
                             throw new Exception("Failed to deserialize");
                         }
-
-                        return value;
                     }
                 }
             }

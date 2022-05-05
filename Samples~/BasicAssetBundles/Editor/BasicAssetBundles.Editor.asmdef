@@ -1,14 +1,16 @@
 {
-    "name": "Unity.RuntimeSceneSerialization.Generated",
+    "name": "BasicAssetBundles.Editor",
     "references": [
-        "Unity.Properties"
+        "Unity.RuntimeSceneSerialization"
     ],
-    "includePlatforms": [],
+    "includePlatforms": [
+        "Editor"
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
     "overrideReferences": false,
     "precompiledReferences": [],
-    "autoReferenced": false,
+    "autoReferenced": true,
     "defineConstraints": [],
     "versionDefines": [],
     "noEngineReferences": false

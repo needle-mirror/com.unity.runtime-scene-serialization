@@ -260,6 +260,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var variables = methodBody.Variables;
             foreach (var container in componentTypes)
             {
+                Console.WriteLine($"WRAPPER FOR {container.TypeReference.Name}");
                 var type = container.TypeReference;
                 var instanceVariable = new VariableDefinition(type);
                 var boolVariable = new VariableDefinition(boolType);

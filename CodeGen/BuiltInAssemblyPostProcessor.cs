@@ -148,6 +148,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var propertyBagDefinitions = new List<Tuple<TypeDefinition, TypeReference>>();
             foreach (var type in serializableContainerTypes)
             {
+                Console.WriteLine($"GENERATE FOR {type}");
                 var containerType = context.ImportReference(type);
                 var propertyBagType = GeneratePropertyBag(context, containerType, createValueMethod, createArrayMethod, createListMethod, unityObjectPropertyType, unityObjectPropertyListType);
                 module.Types.Add(propertyBagType);
@@ -163,11 +164,39 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var propertyBagType = PropertyBag.GeneratePropertyBagHeader(context, containerType, out var ctorMethod, out var addPropertyMethod);
             var ctorMethodBody = ctorMethod.Body;
             var il = ctorMethodBody.GetILProcessor();
-            var baseCtorCall = ctorMethodBody.Instructions.Last();
+            var instructions = ctorMethodBody.Instructions;
+            var startMethod = il.Create(OpCodes.Nop);
+            il.Append(startMethod);
+            var lastInstruction = startMethod;
+            var exceptionType = context.Module.ImportReference(typeof (Exception));
             foreach (var (member, nameOverride) in CodeGenUtils.GetPropertyMembers(containerType.Resolve()))
             {
                 if (CodeGenUtils.TryGenerateUnityObjectProperty(context, containerType, null, member, il, addPropertyMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference))
+                {
+                    var last = instructions.Last();
+                    var endCatch = il.Create(OpCodes.Nop);
+                    il.InsertAfter(last, endCatch);
+
+                    var leaveTry = il.Create (OpCodes.Leave, endCatch);
+                    var startCatch = il.Create(OpCodes.Nop);
+                    var leaveCatch = il.Create (OpCodes.Leave, endCatch);
+
+                    il.InsertAfter(last, leaveTry);
+                    il.InsertAfter(leaveTry, startCatch);
+                    il.InsertAfter (startCatch, leaveCatch);
+
+                    var handler = new ExceptionHandler (ExceptionHandlerType.Catch) {
+                        TryStart = lastInstruction,
+                        TryEnd = startCatch,
+                        HandlerStart = startCatch,
+                        HandlerEnd = endCatch,
+                        CatchType = exceptionType
+                    };
+
+                    ctorMethodBody.ExceptionHandlers.Add (handler);
+                    lastInstruction = endCatch;
                     continue;
+                }
 
                 var memberType = context.ImportReference(Utility.GetMemberType(member).ResolveGenericParameter(containerType));
 
@@ -197,28 +226,30 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 il.Emit(OpCodes.Ldarg_0); // this
                 il.Emit(OpCodes.Newobj, propertyType.GetConstructors().First());
                 il.Emit(OpCodes.Call, context.Module.ImportReference(addPropertyMethod.MakeGenericInstanceMethod(memberType)));
+                var buffer = il.Create(OpCodes.Nop);
+                il.Append(buffer);
+                lastInstruction = buffer;
             }
 
             il.Emit(OpCodes.Ret);
 
-            var nop = il.Create(OpCodes.Nop);
-            var ret = il.Create (OpCodes.Ret);
-            var leave = il.Create (OpCodes.Leave, ret);
+            var finalNop = il.Create(OpCodes.Nop);
+            var finalReturn = il.Create (OpCodes.Ret);
+            var finalLeave = il.Create (OpCodes.Leave, finalReturn);
 
-            il.InsertAfter(ctorMethodBody.Instructions.Last(), nop);
-            il.InsertAfter (nop, leave);
-            il.InsertAfter (leave, ret);
+            il.InsertAfter(instructions.Last(), finalNop);
+            il.InsertAfter (finalNop, finalLeave);
+            il.InsertAfter (finalLeave, finalReturn);
 
-            var handler = new ExceptionHandler (ExceptionHandlerType.Catch) {
-                TryStart = baseCtorCall.Next,
-                TryEnd = nop,
-                HandlerStart = nop,
-                HandlerEnd = ret,
-                CatchType = context.Module.ImportReference(typeof (Exception))
+            var finalHandler = new ExceptionHandler (ExceptionHandlerType.Catch) {
+                TryStart = startMethod,
+                TryEnd = finalNop,
+                HandlerStart = finalNop,
+                HandlerEnd = finalReturn,
+                CatchType = exceptionType
             };
 
-            ctorMethodBody.ExceptionHandlers.Add (handler);
-
+            ctorMethodBody.ExceptionHandlers.Add (finalHandler);
             return propertyBagType;
         }
 

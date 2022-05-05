@@ -1,5 +1,6 @@
 ﻿using System;
 using System.Linq;
+using Unity.Serialization.Json.Unsafe;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
@@ -78,6 +79,16 @@ namespace Unity.RuntimeSceneSerialization
             }
 
             return root;
+        }
+
+        internal static decimal AsDecimal(this UnsafePrimitiveView view)
+        {
+            return decimal.Parse(view.AsString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture);
+        }
+
+        internal static float AsFloatSafe(this UnsafePrimitiveView view)
+        {
+            return float.Parse(view.AsString(), System.Globalization.NumberStyles.Any, System.Globalization.CultureInfo.InvariantCulture);
         }
     }
 }

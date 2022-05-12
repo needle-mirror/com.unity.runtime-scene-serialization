@@ -79,7 +79,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static AssemblyDefinition CreateAssemblyDefinition(ICompiledAssembly compiledAssembly)
         {
-            var resolver = new AssemblyResolver(compiledAssembly);
+            var resolver = new PostProcessorAssemblyResolver(compiledAssembly);
 
             var readerParameters = new ReaderParameters
             {

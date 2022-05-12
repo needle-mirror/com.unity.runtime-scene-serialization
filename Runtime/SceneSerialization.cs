@@ -100,16 +100,14 @@ namespace Unity.RuntimeSceneSerialization
                 DisableSerializedReferences = true
             };
 
-            using (var writer = new JsonStringBuffer(parameters.InitialCapacity, Allocator.Temp))
+            using (var writer = new JsonWriter(parameters.InitialCapacity, Allocator.Temp))
             {
                 var container = new PropertyWrapper<T>(value);
 
                 var visitor = new JsonSceneWriter(metadata);
 
-                visitor.SetStringWriter(writer);
+                visitor.SetWriter(writer);
                 visitor.SetSerializedType(parameters.SerializedType);
-                visitor.SetMinified(parameters.Minified);
-                visitor.SetSimplified(parameters.Simplified);
 
                 using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
                 return writer.ToString();

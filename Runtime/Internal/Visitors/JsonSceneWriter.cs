@@ -61,35 +61,17 @@ namespace Unity.RuntimeSceneSerialization.Internal
         }
 
         /// <summary>
-        /// Constants for styling and special keys.
-        /// </summary>
-        static class Style
-        {
-            /// <summary>
-            /// Spaces for indentation
-            /// </summary>
-            public const int Space = 4;
-        }
-
-        /// <summary>
         /// Shared property used to write the serialized type metadata.
         /// </summary>
         static readonly SerializedTypeProperty k_SerializedTypeProperty = new SerializedTypeProperty();
 
-        /// <summary>
-        /// Gets or sets the current indent level.
-        /// </summary>
-        int Indent { get; set; }
-
         readonly SerializationMetadata m_SerializationMetadata;
-        JsonStringBuffer m_Writer;
+        JsonWriter m_Writer;
         Type m_RootType;
         bool m_DisableRootAdapters;
         JsonAdapterCollection m_Adapters;
-        bool m_Minified;
-        bool m_Simplified;
 
-        public void SetStringWriter(JsonStringBuffer writer)
+        public void SetWriter(JsonWriter writer)
             => m_Writer = writer;
 
         public void SetSerializedType(Type type)
@@ -103,12 +85,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
         public void SetUserDefinedAdapters(List<IJsonAdapter> adapters)
             => m_Adapters.UserDefined = adapters;
-
-        public void SetMinified(bool minified)
-            => m_Minified = minified;
-
-        public void SetSimplified(bool simplified)
-            => m_Simplified = simplified;
 
         public JsonSceneWriter(SerializationMetadata metadata)
         {
@@ -131,136 +107,16 @@ namespace Unity.RuntimeSceneSerialization.Internal
             return metadata;
         }
 
-        void WriteSerializedContainerMetadata<TContainer>(ref TContainer container, SerializedContainerMetadata metadata, ref int count)
+        void WriteSerializedContainerMetadata<TContainer>(ref TContainer container, SerializedContainerMetadata metadata)
         {
             if (metadata.HasSerializedType)
             {
                 using (CreatePropertyScope(k_SerializedTypeProperty))
                 {
-                    WriteMemberSeparator(ref count);
                     var typeInfo = new SerializedType {Type = container.GetType()};
                     ((IPropertyAccept<SerializedType>) k_SerializedTypeProperty).Accept(this, ref typeInfo);
                 }
             }
-        }
-
-        void WriteBeginObject()
-        {
-            m_Writer.Write('{');
-
-            if (!m_Minified)
-                Indent++;
-        }
-
-        void WriteEndObject(int memberCount)
-        {
-            if (!m_Minified)
-            {
-                Indent--;
-
-                if (memberCount > 0)
-                    WriteIndent();
-            }
-
-            m_Writer.Write('}');
-        }
-
-        void WriteBeginCollection()
-        {
-            m_Writer.Write('[');
-
-            if (!m_Minified)
-            {
-                Indent++;
-            }
-        }
-
-        void WriteEndCollection(int memberCount)
-        {
-            if (!m_Minified)
-            {
-                Indent--;
-
-                if (memberCount > 0)
-                    WriteIndent();
-            }
-
-            m_Writer.Write(']');
-        }
-
-        void WriteIndent()
-        {
-            if (m_Minified)
-                return;
-
-            m_Writer.Write('\n');
-            m_Writer.Write(' ', Style.Space * Indent);
-        }
-
-        void WriteMemberSeparator(ref int memberCount)
-        {
-            if (!m_Simplified)
-            {
-                if (memberCount > 0)
-                    m_Writer.Write(',');
-
-                if (!m_Minified)
-                    WriteIndent();
-            }
-            else
-            {
-                if (!m_Minified)
-                    WriteIndent();
-                else if (memberCount > 0)
-                    m_Writer.Write(' ');
-            }
-
-            memberCount++;
-        }
-
-        void WritePropertyName(string name)
-        {
-            var useQuotes = !m_Simplified || ContainsAnySpecialCharacters(name);
-
-            if (useQuotes)
-                m_Writer.Write('\"');
-
-            m_Writer.Write(name);
-
-            if (useQuotes)
-                m_Writer.Write('\"');
-
-            if (!m_Minified && m_Simplified)
-                m_Writer.Write(' ');
-
-            m_Writer.Write(m_Simplified ? '=' : ':');
-
-            if (!m_Minified)
-                m_Writer.Write(' ');
-        }
-
-        static unsafe bool ContainsAnySpecialCharacters(string key)
-        {
-            fixed (char* chars = key)
-            {
-                for (var i = 0; i < key.Length; i++)
-                {
-                    var c = chars[i];
-                    if (c == ' ' ||
-                        c == '\t' ||
-                        c == '\r' ||
-                        c == '\n' ||
-                        c == '\0' ||
-                        c == ',' ||
-                        c == ']' ||
-                        c == '}' ||
-                        c == ':' ||
-                        c == '=')
-                        return true;
-                }
-            }
-
-            return false;
         }
 
         void IPropertyBagVisitor.Visit<TContainer>(IPropertyBag<TContainer> properties, ref TContainer container)
@@ -276,14 +132,11 @@ namespace Unity.RuntimeSceneSerialization.Internal
             }
 
             var isRootContainer = properties is IPropertyWrapper;
-
-            var count = 0;
-
             if (!isRootContainer)
             {
                 var metadata = GetSerializedContainerMetadata<TContainer>();
-                WriteBeginObject();
-                WriteSerializedContainerMetadata(ref container, metadata, ref count);
+                m_Writer.WriteBeginObject();
+                WriteSerializedContainerMetadata(ref container, metadata);
             }
 
             if (properties is IPropertyList<TContainer> propertyList)
@@ -295,10 +148,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
                         continue;
 
                     using (CreatePropertyScope(property))
-                    {
-                        if (!isRootContainer) WriteMemberSeparator(ref count);
                         ((IPropertyAccept<TContainer>) property).Accept(this, ref container);
-                    }
                 }
             }
             else
@@ -310,83 +160,63 @@ namespace Unity.RuntimeSceneSerialization.Internal
                         continue;
 
                     using (CreatePropertyScope(property))
-                    {
-                        if (!isRootContainer) WriteMemberSeparator(ref count);
                         ((IPropertyAccept<TContainer>) property).Accept(this, ref container);
-                    }
                 }
             }
 
             if (!isRootContainer)
             {
-                WriteEndObject(count);
+                m_Writer.WriteEndObject();
             }
         }
 
         void ICollectionPropertyBagVisitor.Visit<TCollection, TElement>(ICollectionPropertyBag<TCollection, TElement> properties, ref TCollection container)
         {
             var metadata = GetSerializedContainerMetadata<TCollection>();
-            var metadataCount = 0;
-
             if (metadata.Exists)
             {
-                WriteBeginObject();
-                WriteSerializedContainerMetadata(ref container, metadata, ref metadataCount);
-                WriteMemberSeparator(ref metadataCount);
-                WritePropertyName(k_SerializedElementsKey);
+                m_Writer.WriteBeginObject();
+                WriteSerializedContainerMetadata(ref container, metadata);
+                m_Writer.WriteKey(k_SerializedElementsKey);
             }
 
-            WriteBeginCollection();
-
-            var elementCount = 0;
-
-            foreach (var property in properties.GetProperties(ref container))
+            using (m_Writer.WriteArrayScope())
             {
-                using (CreatePropertyScope(property))
+                foreach (var property in properties.GetProperties(ref container))
                 {
-                    WriteMemberSeparator(ref elementCount);
-                    ((IPropertyAccept<TCollection>) property).Accept(this, ref container);
+                    using (CreatePropertyScope(property))
+                        ((IPropertyAccept<TCollection>) property).Accept(this, ref container);
                 }
             }
 
-            WriteEndCollection(elementCount);
-
             if (metadata.Exists)
             {
-                WriteEndObject(metadataCount);
+                m_Writer.WriteEndObject();
             }
         }
 
         void IListPropertyBagVisitor.Visit<TList, TElement>(IListPropertyBag<TList, TElement> properties, ref TList container)
         {
             var metadata = GetSerializedContainerMetadata<TList>();
-            var metadataCount = 0;
             if (metadata.Exists)
             {
-                WriteBeginObject();
-                WriteSerializedContainerMetadata(ref container, metadata, ref metadataCount);
-                WriteMemberSeparator(ref metadataCount);
-                WritePropertyName(k_SerializedElementsKey);
+                m_Writer.WriteBeginObject();
+                WriteSerializedContainerMetadata(ref container, metadata);
+                m_Writer.WriteKey(k_SerializedElementsKey);
             }
 
-            WriteBeginCollection();
-
-            var elementCount = 0;
-
-            foreach (var property in properties.GetProperties(ref container))
+            using (m_Writer.WriteArrayScope())
             {
-                using (CreatePropertyScope(property))
+                foreach (var property in properties.GetProperties(ref container))
                 {
-                    WriteMemberSeparator(ref elementCount);
-                    ((IPropertyAccept<TList>) property).Accept(this, ref container);
+                    using (CreatePropertyScope(property))
+                        ((IPropertyAccept<TList>) property).Accept(this, ref container);
                 }
             }
 
-            WriteEndCollection(elementCount);
-
             if (metadata.Exists)
             {
-                WriteEndObject(metadataCount);
+                m_Writer.WriteEndObject();
             }
         }
 
@@ -399,35 +229,28 @@ namespace Unity.RuntimeSceneSerialization.Internal
             else
             {
                 var metadata = GetSerializedContainerMetadata<TDictionary>();
-                var metadataCount = 0;
+                if (metadata.Exists)
+                {
+                    m_Writer.WriteBeginObject();
+                    WriteSerializedContainerMetadata(ref container, metadata);
+                    m_Writer.WriteKey(k_SerializedElementsKey);
+                }
+
+                using (m_Writer.WriteObjectScope())
+                {
+                    // @FIXME allocations
+                    var property = new DictionaryElementProperty<TDictionary, TKey, TValue>();
+
+                    foreach (var kvp in container)
+                    {
+                        property.Key = kvp.Key;
+                        ((IPropertyAccept<TDictionary>) property).Accept(this, ref container);
+                    }
+                }
 
                 if (metadata.Exists)
                 {
-                    WriteBeginObject();
-                    WriteSerializedContainerMetadata(ref container, metadata, ref metadataCount);
-                    WriteMemberSeparator(ref metadataCount);
-                    WritePropertyName(k_SerializedElementsKey);
-                }
-
-                WriteBeginObject();
-
-                var elementCount = 0;
-
-                // @FIXME allocations
-                var property = new DictionaryElementProperty<TDictionary, TKey, TValue>();
-
-                foreach (var kvp in container)
-                {
-                    WriteMemberSeparator(ref elementCount);
-                    property.Key = kvp.Key;
-                    ((IPropertyAccept<TDictionary>) property).Accept(this, ref container);
-                }
-
-                WriteEndObject(elementCount);
-
-                if (metadata.Exists)
-                {
-                    WriteEndObject(metadataCount);
+                    m_Writer.WriteEndObject();
                 }
             }
         }
@@ -438,7 +261,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
             if (!isRootProperty && !(property is ICollectionElementProperty))
             {
-                WritePropertyName(property.Name);
+                m_Writer.WriteKey(property.Name);
             }
 
             TValue value;
@@ -458,16 +281,16 @@ namespace Unity.RuntimeSceneSerialization.Internal
             {
                 //HACK: Work around incorrect primitive serialization
                 case ulong uLongValue:
-                    m_Writer.Write(uLongValue.ToString());
+                    m_Writer.WriteValueLiteral(uLongValue.ToString());
                     return;
                 case float doubleValue:
-                    m_Writer.Write(doubleValue.ToString("G9", CultureInfo.InvariantCulture));
+                    m_Writer.WriteValueLiteral(doubleValue.ToString("G9", CultureInfo.InvariantCulture));
                     return;
                 case double doubleValue:
-                    m_Writer.Write(doubleValue.ToString("G17", CultureInfo.InvariantCulture));
+                    m_Writer.WriteValueLiteral(doubleValue.ToString("G17", CultureInfo.InvariantCulture));
                     return;
                 case decimal decimalValue:
-                    m_Writer.Write(decimalValue.ToString(CultureInfo.InvariantCulture));
+                    m_Writer.WriteValueLiteral(decimalValue.ToString(CultureInfo.InvariantCulture));
                     return;
             }
 
@@ -482,7 +305,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
             if (RuntimeTypeInfoCache<TValue>.CanBeNull && EqualityComparer<TValue>.Default.Equals(value, default) )
             {
-                m_Writer.Write("null");
+                m_Writer.WriteNull();
                 return;
             }
 
@@ -525,48 +348,48 @@ namespace Unity.RuntimeSceneSerialization.Internal
             throw new Exception($"Unsupported Type {type}.");
         }
 
-        static void WritePrimitiveBoxed(JsonStringBuffer writer, object value, Type type)
+        static void WritePrimitiveBoxed(JsonWriter writer, object value, Type type)
         {
             switch (Type.GetTypeCode(type))
             {
                 case TypeCode.SByte:
-                    writer.Write((sbyte) value);
+                    writer.WriteValue((sbyte) value);
                     return;
                 case TypeCode.Int16:
-                    writer.Write((short) value);
+                    writer.WriteValue((short) value);
                     return;
                 case TypeCode.Int32:
-                    writer.Write((int) value);
+                    writer.WriteValue((int) value);
                     return;
                 case TypeCode.Int64:
-                    writer.Write((long) value);
+                    writer.WriteValue((long) value);
                     return;
                 case TypeCode.Byte:
-                    writer.Write((byte) value);
+                    writer.WriteValue((byte) value);
                     return;
                 case TypeCode.UInt16:
-                    writer.Write((ushort) value);
+                    writer.WriteValue((ushort) value);
                     return;
                 case TypeCode.UInt32:
-                    writer.Write((uint) value);
+                    writer.WriteValue((uint) value);
                     return;
                 case TypeCode.UInt64:
-                    writer.Write((ulong) value);
+                    writer.WriteValue((ulong) value);
                     return;
                 case TypeCode.Single:
-                    writer.Write((float) value);
+                    writer.WriteValue((float) value);
                     return;
                 case TypeCode.Double:
-                    writer.Write((double) value);
+                    writer.WriteValue((double) value);
                     return;
                 case TypeCode.Boolean:
-                    writer.Write((bool) value ? "true" : "false");
+                    writer.WriteValueLiteral((bool) value ? "true" : "false");
                     return;
                 case TypeCode.Char:
-                    writer.WriteEncodedJsonString((char) value);
+                    writer.WriteValue((char) value);
                     return;
                 case TypeCode.String:
-                    writer.WriteEncodedJsonString(value as string);
+                    writer.WriteValue(value as string);
                     return;
                 default:
                     throw new ArgumentOutOfRangeException();

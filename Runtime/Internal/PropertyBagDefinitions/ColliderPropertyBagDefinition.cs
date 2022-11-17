@@ -43,6 +43,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         public static void Unused(CapsuleCollider collider)
         {
             collider.material = collider.material;
+            collider.sharedMaterial = collider.sharedMaterial;
             collider.isTrigger = collider.isTrigger;
             collider.radius = collider.radius;
             collider.height = collider.height;
@@ -53,6 +54,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         public static void Unused(BoxCollider collider)
         {
             collider.material = collider.material;
+            collider.sharedMaterial = collider.sharedMaterial;
             collider.isTrigger = collider.isTrigger;
             collider.size = collider.size;
             collider.center = collider.center;
@@ -61,6 +63,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         public static void Unused(MeshCollider collider)
         {
             collider.material = collider.material;
+            collider.sharedMaterial = collider.sharedMaterial;
             collider.isTrigger = collider.isTrigger;
             collider.convex = collider.convex;
             collider.cookingOptions = collider.cookingOptions;
@@ -70,6 +73,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         public static void Unused(SphereCollider collider)
         {
             collider.material = collider.material;
+            collider.sharedMaterial = collider.sharedMaterial;
             collider.isTrigger = collider.isTrigger;
             collider.radius = collider.radius;
             collider.center = collider.center;

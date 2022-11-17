@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using UnityEditor;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
@@ -63,8 +62,7 @@ namespace Unity.RuntimeSceneSerialization.EditorInternal
 
         void DrawAsset(string guid, AssetPack.Asset asset)
         {
-            bool foldout;
-            m_Foldouts.TryGetValue(guid, out foldout);
+            m_Foldouts.TryGetValue(guid, out var foldout);
 
             var assets = asset.Assets;
             var label = $"{guid} ({assets.Count})";

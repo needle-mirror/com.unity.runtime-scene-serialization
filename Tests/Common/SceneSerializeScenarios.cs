@@ -1,10 +1,20 @@
-using UnityEngine;
 using NUnit.Framework;
-using System;
 using System.Collections.Generic;
+using UnityEngine;
 
 namespace Unity.RuntimeSceneSerialization.Tests
 {
+    enum ScenarioTestPhase
+    {
+        AfterSceneLoad,
+        AfterSerialize,
+        AfterDeserialize,
+#if UNITY_EDITOR
+        AfterBuildContentInEditor,
+        AfterSerializeInEditor
+#endif
+    }
+
     // Classes that create scenarios suitable for incorporation into save/reload style serialization tests.
     // Each class implements the same interface and will build content, then check expected values are still present.
     interface ISceneSerializeTestScenario
@@ -16,19 +26,22 @@ namespace Unity.RuntimeSceneSerialization.Tests
         void BuildContent();
 
         // Confirm that the state is the same as the original content
-        void CompareWithOriginalContent();
+        void CompareWithOriginalContent(ScenarioTestPhase phase);
 
+#if UNITY_EDITOR
         void CheckAssetPack(AssetPack assetPack);
+#endif
     }
 
     static class ScenarioEnumerator
     {
         // Tests that want to repeat a scenario against each class that implements ISerializeRuleMonoBehaviour can use this enumerator
-        public static IEnumerable<ISceneSerializeTestScenario> GetEnum()
+        public static IEnumerable<ISceneSerializeTestScenario> GetEnumerator()
         {
             yield return new BasicGameObject();
             yield return new NestedObjects();
             yield return new MonoBehaviourByValScenario();
+            yield return new MonoBehaviourSerializationCallbackReceiverScenario();
 
 #if UNITY_EDITOR
             yield return new SerializedReferenceScenario();
@@ -38,15 +51,15 @@ namespace Unity.RuntimeSceneSerialization.Tests
 
     class BasicGameObject : ISceneSerializeTestScenario
     {
-        public string Name => "BasicGameObject";
+        string ISceneSerializeTestScenario.Name => "BasicGameObject";
 
-        public void BuildContent()
+        void ISceneSerializeTestScenario.BuildContent()
         {
             var go = new GameObject("MyGo");
             go.transform.position = new Vector3(1.0f, 1.1f, 1.2f);
         }
 
-        public void CompareWithOriginalContent()
+        void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
         {
             var go = GameObject.Find("MyGo");
             Assert.IsNotNull(go);
@@ -56,21 +69,23 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.IsNull(goRenamed);
         }
 
-        public void CheckAssetPack(AssetPack assetPack)
+#if UNITY_EDITOR
+        void ISceneSerializeTestScenario.CheckAssetPack(AssetPack assetPack)
         {
             // Expect default skybox to be included in asset pack
             Assert.AreEqual(1, assetPack.AssetCount);
         }
+#endif
     }
 
     class NestedObjects : ISceneSerializeTestScenario
     {
-        public string Name => "NestedObjects";
-
         const float k_Pos1 = 2.0f;
         const float k_Pos2 = 3.0f;
 
-        public void BuildContent()
+        string ISceneSerializeTestScenario.Name => "NestedObjects";
+
+        void ISceneSerializeTestScenario.BuildContent()
         {
             var go = new GameObject("MyGo");
 
@@ -87,7 +102,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             sphereTransform.position = new Vector3(k_Pos2, k_Pos2, k_Pos2);
         }
 
-        public void CompareWithOriginalContent()
+        void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
         {
             var go = GameObject.Find("MyGo");
             Assert.IsNotNull(go);
@@ -104,25 +119,27 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.AreEqual(new Vector3(expectedCenter, expectedCenter, expectedCenter), sphere.transform.position);
         }
 
-        public void CheckAssetPack(AssetPack assetPack)
+#if UNITY_EDITOR
+        void ISceneSerializeTestScenario.CheckAssetPack(AssetPack assetPack)
         {
             // Because SharedMesh and SharedMaterial references
             Assert.AreEqual(2, assetPack.AssetCount);
         }
+#endif
     }
 
     class MonoBehaviourByValScenario : ISceneSerializeTestScenario
     {
-        public string Name => "MonoBehaviourByValScenario";
+        string ISceneSerializeTestScenario.Name => "MonoBehaviourByValScenario";
 
-        public void BuildContent()
+        void ISceneSerializeTestScenario.BuildContent()
         {
             var go = new GameObject("GoWithMonoBehaviour");
             var comp = go.AddComponent<MonoBehaviourByValueFields>();
             comp.SetKnownState();
         }
 
-        public void CompareWithOriginalContent()
+        void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
         {
             var go = GameObject.Find("GoWithMonoBehaviour");
             Assert.IsNotNull(go);
@@ -131,26 +148,80 @@ namespace Unity.RuntimeSceneSerialization.Tests
             comp.TestKnownState();
         }
 
-        public void CheckAssetPack(AssetPack assetPack)
+#if UNITY_EDITOR
+        void ISceneSerializeTestScenario.CheckAssetPack(AssetPack assetPack)
         {
             // Expect default skybox to be included in asset pack
             Assert.AreEqual(1, assetPack.AssetCount);
         }
+#endif
+    }
+
+    class MonoBehaviourSerializationCallbackReceiverScenario : ISceneSerializeTestScenario
+    {
+
+        string ISceneSerializeTestScenario.Name => "MonoBehaviourSerializationCallbackReceiverScenario";
+
+        void ISceneSerializeTestScenario.BuildContent()
+        {
+            var go = new GameObject("SerializationCallbackReceiver");
+            var callbackReceiver = go.AddComponent<MonoBehaviourSerializationCallbackReceiver>();
+            Assert.IsFalse(callbackReceiver.BeforeSerialize);
+            Assert.IsFalse(callbackReceiver.AfterDeserialize);
+        }
+
+        void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
+        {
+            var go = GameObject.Find("SerializationCallbackReceiver");
+            Assert.IsNotNull(go);
+
+            var callbackReceiver = go.GetComponent<MonoBehaviourSerializationCallbackReceiver>();
+            switch (phase)
+            {
+#if UNITY_EDITOR
+                case ScenarioTestPhase.AfterBuildContentInEditor:
+                    Assert.IsFalse(callbackReceiver.BeforeSerialize);
+                    Assert.IsFalse(callbackReceiver.AfterDeserialize);
+                    break;
+                case ScenarioTestPhase.AfterSerializeInEditor:
+                    Assert.IsTrue(callbackReceiver.BeforeSerialize);
+                    Assert.IsFalse(callbackReceiver.AfterDeserialize);
+                    break;
+#endif
+                case ScenarioTestPhase.AfterSerialize:
+                    Assert.IsTrue(callbackReceiver.BeforeSerialize);
+                    Assert.IsTrue(callbackReceiver.AfterDeserialize);
+                    break;
+                case ScenarioTestPhase.AfterSceneLoad:
+                case ScenarioTestPhase.AfterDeserialize:
+                    Assert.IsFalse(callbackReceiver.BeforeSerialize);
+                    Assert.IsTrue(callbackReceiver.AfterDeserialize);
+                    break;
+            }
+        }
+
+#if UNITY_EDITOR
+        void ISceneSerializeTestScenario.CheckAssetPack(AssetPack assetPack)
+        {
+            // Expect default skybox to be included in asset pack
+            Assert.AreEqual(1, assetPack.AssetCount);
+        }
+#endif
     }
 
 #if UNITY_EDITOR
     class SerializedReferenceScenario : ISceneSerializeTestScenario
     {
-        public string Name => "SerializedReferenceScenario";
+        string ISceneSerializeTestScenario.Name => "SerializedReferenceScenario";
 
-        public void BuildContent()
+        void ISceneSerializeTestScenario.BuildContent()
         {
             var go = new GameObject("GoWithSRMonoBehaviour");
             var comp = go.AddComponent<MonoBehaviourSerializedRef>();
             comp.SetKnownState();
         }
 
-        public void CompareWithOriginalContent()
+        void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
         {
             var go = GameObject.Find("GoWithSRMonoBehaviour");
             Assert.IsNotNull(go);
@@ -159,7 +230,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             comp.TestKnownState();
         }
 
-        public void CheckAssetPack(AssetPack assetPack)
+        void ISceneSerializeTestScenario.CheckAssetPack(AssetPack assetPack)
         {
             // Expect default skybox to be included in asset pack
             Assert.AreEqual(1, assetPack.AssetCount);

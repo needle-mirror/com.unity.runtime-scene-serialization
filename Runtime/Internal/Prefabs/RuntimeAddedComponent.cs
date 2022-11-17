@@ -1,6 +1,5 @@
 ﻿using System;
 using Unity.Properties;
-using UnityEditor;
 using UnityEngine;
 
 namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
@@ -13,25 +12,30 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
     {
         class AddedComponentPropertyBag : ContainerPropertyBag<RuntimeAddedComponent>
         {
-            static readonly DelegateProperty<RuntimeAddedComponent, string> k_TransformPath = new DelegateProperty<RuntimeAddedComponent, string>(
-                "transformPath",
-                (ref RuntimeAddedComponent container) => container.TransformPath,
-                (ref RuntimeAddedComponent container, string value) => { container.TransformPath = value; }
-            );
+            class TransformPathProperty : Property<RuntimeAddedComponent, string>
+            {
+                public override string Name => TransformPathFieldName;
+                public override bool IsReadOnly => false;
+                public override string GetValue(ref RuntimeAddedComponent container) => container.TransformPath;
+                public override void SetValue(ref RuntimeAddedComponent container, string value) => container.TransformPath = value;
+            }
 
-            static readonly DelegateProperty<RuntimeAddedComponent, Component> k_Component = new DelegateProperty<RuntimeAddedComponent, Component>(
-                ComponentFieldName,
-                (ref RuntimeAddedComponent container) => container.Component,
-                (ref RuntimeAddedComponent container, Component value) => { container.Component = value; }
-            );
+            class ComponentProperty : Property<RuntimeAddedComponent, Component>
+            {
+                public override string Name => ComponentFieldName;
+                public override bool IsReadOnly => false;
+                public override Component GetValue(ref RuntimeAddedComponent container) => container.Component;
+                public override void SetValue(ref RuntimeAddedComponent container, Component value) => container.Component = value;
+            }
 
             public AddedComponentPropertyBag()
             {
-                AddProperty(k_TransformPath);
-                AddProperty(k_Component);
+                AddProperty(new TransformPathProperty());
+                AddProperty(new ComponentProperty());
             }
         }
 
+        public const string TransformPathFieldName = "transformPath";
         public const string ComponentFieldName = "component";
 
         public string TransformPath;
@@ -45,17 +49,11 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             Component = addedComponent;
         }
 
+        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
 #if UNITY_EDITOR
-        [InitializeOnLoadMethod]
-        static void EditorInitializeOnLoad() { RegisterPropertyBag(); }
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        static void InitializeOnLoad() { /* Do Nothing */ }
-#else
-        [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
-        static void InitializeOnLoad() { RegisterPropertyBag(); }
+        [UnityEditor.InitializeOnLoadMethod]
 #endif
-
-        static void RegisterPropertyBag()
+        static void Initialize()
         {
             PropertyBag.Register(new AddedComponentPropertyBag());
         }

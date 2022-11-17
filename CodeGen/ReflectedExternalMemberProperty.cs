@@ -1,12 +1,11 @@
 ﻿#if !NET_DOTS
-using System;
-using System.Reflection;
 using Mono.Cecil;
 using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
+using System;
+using System.Reflection;
 using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
-using UnityEngine;
 using MethodAttributes = Mono.Cecil.MethodAttributes;
 using TypeAttributes = Mono.Cecil.TypeAttributes;
 
@@ -26,10 +25,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             var type = new TypeDefinition
             (
-                @namespace: string.Empty,
-                name: Utility.GetSanitizedName(memberName, string.Empty),
-                attributes: TypeAttributes.Class | TypeAttributes.NestedPrivate,
-                baseType: propertyBaseType
+                string.Empty,
+                Utility.GetSanitizedName(memberName, string.Empty),
+                TypeAttributes.Class | TypeAttributes.NestedPrivate,
+                propertyBaseType
             )
             {
                 Scope = containerType.Scope
@@ -58,17 +57,16 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             };
 
             var parameters = basePropertyConstructor.Parameters;
-            if (member is FieldDefinition)
+            switch (member)
             {
-                parameters.Add(new ParameterDefinition(context.ImportReference(typeof(FieldInfo))));
-            }
-            else if (member is PropertyDefinition)
-            {
-                parameters.Add(new ParameterDefinition(context.ImportReference(typeof(PropertyInfo))));
-            }
-            else
-            {
-                throw new ArgumentException($"No constructor exists for ReflectedMemberProperty({member.GetType()})");
+                case FieldDefinition _:
+                    parameters.Add(new ParameterDefinition(context.ImportReference(typeof(FieldInfo))));
+                    break;
+                case PropertyDefinition _:
+                    parameters.Add(new ParameterDefinition(context.ImportReference(typeof(PropertyInfo))));
+                    break;
+                default:
+                    throw new ArgumentException($"No constructor exists for ReflectedMemberProperty({member.GetType()})");
             }
 
             var method = new MethodDefinition
@@ -121,16 +119,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             // {bindingFlags}
             il.Emit(OpCodes.Ldc_I4_S, (sbyte) flags);
 
-            if (member is FieldDefinition)
+            switch (member)
             {
-                // GetField
-                il.Emit(OpCodes.Callvirt, context.TypeGetFieldMethodReference.Value);
-            }
-            // ReSharper disable once ConditionIsAlwaysTrueOrFalse
-            else if (member is PropertyDefinition)
-            {
-                // GetProperty
-                il.Emit(OpCodes.Callvirt, context.TypeGetPropertyMethodReference.Value);
+                // ReSharper disable once ConditionIsAlwaysTrueOrFalse
+                case FieldDefinition _:
+                    // GetField
+                    il.Emit(OpCodes.Callvirt, context.TypeGetFieldMethodReference.Value);
+                    break;
+                case PropertyDefinition _:
+                    // GetProperty
+                    il.Emit(OpCodes.Callvirt, context.TypeGetPropertyMethodReference.Value);
+                    break;
             }
 
             // {name}

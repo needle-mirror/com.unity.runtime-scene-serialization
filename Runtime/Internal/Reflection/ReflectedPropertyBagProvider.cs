@@ -5,7 +5,6 @@ using System.Linq;
 using System.Reflection;
 using Unity.Properties;
 using Unity.Properties.Internal;
-using UnityEngine;
 using UnityEngine.Scripting;
 
 namespace Unity.RuntimeSceneSerialization.Internal

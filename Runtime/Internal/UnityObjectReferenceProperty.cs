@@ -87,12 +87,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
                     return NullObjectReference;
                 }
 
-                if (fileId < 0)
-                {
-                    Debug.LogWarningFormat("Could not find sub-asset for {0} at fileId {1}", obj, fileId);
-                    return NullObjectReference;
-                }
-
                 return new UnityObjectReference { guid = guid, fileId = fileId };
             }
 

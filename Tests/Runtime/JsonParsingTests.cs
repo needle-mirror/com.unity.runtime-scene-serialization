@@ -1,5 +1,5 @@
-using System;
 using NUnit.Framework;
+using System;
 
 namespace Unity.RuntimeSceneSerialization.Tests
 {
@@ -58,11 +58,14 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.AreEqual(value, testObject.sByteValue);
         }
 
+#if !ENABLE_IL2CPP
+        [TestCase((char)0)]
         [TestCase(char.MinValue)]
+#endif
+
         [TestCase(char.MaxValue)]
         [TestCase('æ')]
         [TestCase('ø')]
-        [TestCase((char)0)]
         [TestCase((char)1)]
         [TestCase((char)123)]
         public void TestChar(char value)

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Unity.Properties;
 using Unity.Properties.Internal;
 using Unity.RuntimeSceneSerialization.Internal.Prefabs;

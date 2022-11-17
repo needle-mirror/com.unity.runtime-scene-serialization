@@ -17,6 +17,7 @@ namespace Unity.RuntimeSceneSerialization
         /// </summary>
         public const int InvalidID = -1;
 
+        // ReSharper disable once IdentifierTypo
         const HideFlags k_DontSaveFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
 
         bool m_SceneObjectsSetup;

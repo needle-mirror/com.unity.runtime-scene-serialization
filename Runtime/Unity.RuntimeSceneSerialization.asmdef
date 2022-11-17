@@ -21,6 +21,11 @@
             "define": "INCLUDE_ANIMATION"
         },
         {
+            "name": "com.unity.modules.audio",
+            "expression": "1.0.0",
+            "define": "INCLUDE_AUDIO"
+        },
+        {
             "name": "com.unity.modules.physics",
             "expression": "1.0.0",
             "define": "INCLUDE_PHYSICS"

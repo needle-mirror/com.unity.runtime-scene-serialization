@@ -1,11 +1,11 @@
-﻿using System;
+﻿using Mono.Cecil;
+using Mono.Cecil.Cil;
+using Mono.Cecil.Rocks;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
-using Mono.Cecil.Rocks;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.Properties.CodeGen.Blocks;
@@ -50,7 +50,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static bool ShouldProcess(ICompiledAssembly compiledAssembly)
         {
-            if (!compiledAssembly.RequiresCodegen())
+            if (!compiledAssembly.RequiresCodeGen())
                 return false;
 
             var assemblyName = compiledAssembly.Name;
@@ -104,10 +104,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
 #endif
 
-            using (var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly))
-            {
-                return GeneratePropertyBags(assemblyDefinition, compiledAssembly.Defines);
-            }
+            using var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly);
+            return GeneratePropertyBags(assemblyDefinition, compiledAssembly.Defines);
         }
 
         static ILPostProcessResult GeneratePropertyBags(AssemblyDefinition compiledAssembly, string[] defines)
@@ -132,12 +130,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             GeneratePropertyBagsForSerializableTypes(context, serializableTypes);
 
-            if (!Directory.Exists("Logs"))
-                Directory.CreateDirectory("Logs");
-
-            File.AppendAllText("Logs/RuntimeSerializationLogs.txt",
-                $"Generated {serializableTypes.Count} property bags in {compiledAssembly.Name}\n");
-
             return CreatePostProcessResult(compiledAssembly);
         }
 
@@ -152,7 +144,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 var resolvedMemberType = memberType.Resolve();
                 if (resolvedMemberType == null)
                 {
-                    Console.Error.WriteLine($"Couldn't resolve {memberType}");
+                    Console.WriteLine($"Error: Couldn't resolve {memberType}");
                     continue;
                 }
 
@@ -213,7 +205,10 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 Console.WriteLine($"GENERATE FOR {type}");
                 var containerType = type.Module == module ? type : context.ImportReference(type);
                 externalContainerTypes.TryGetValue(type.FullName, out var externalContainer);
-                var propertyBagType = GeneratePropertyBag(context, containerType, externalContainer, externalContainerTypes, getTypeMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference, listType);
+                var propertyBagType = GeneratePropertyBag(context, containerType, externalContainer,
+                    externalContainerTypes, getTypeMethod, createValueMethod, createArrayMethod, createListMethod,
+                    unityObjectReference, unityObjectListReference, listType);
+
                 moduleTypes.Add(propertyBagType);
                 propertyBagDefinitions.Add(new Tuple<TypeDefinition, TypeReference>(propertyBagType, externalContainer ?? containerType));
             }
@@ -271,7 +266,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         {
             var effectiveContainerType = externalContainer ?? containerType;
             var propertyBagType = PropertyBag.GeneratePropertyBagHeader(context, effectiveContainerType, out var ctorMethod, out var addPropertyMethod);
-            var il = ctorMethod.Body.GetILProcessor();
+            var ctorMethodBody = ctorMethod.Body;
+            var il = ctorMethodBody.GetILProcessor();
+            var baseCtorCall = ctorMethodBody.Instructions.Last();
             foreach (var (member, nameOverride) in CodeGenUtils.GetPropertyMembers(containerType.Resolve()))
             {
                 if (CodeGenUtils.TryGenerateUnityObjectProperty(context, containerType, externalContainer, member, il, addPropertyMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference))
@@ -325,24 +322,25 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             }
 
             il.Emit(OpCodes.Ret);
+
+            CodeGenUtils.PostProcessPropertyBag(context, ctorMethodBody, baseCtorCall);
+
             return propertyBagType;
         }
 
         static ILPostProcessResult CreatePostProcessResult(AssemblyDefinition assembly)
         {
-            using (var pe = new MemoryStream())
-            using (var pdb = new MemoryStream())
+            using var pe = new MemoryStream();
+            using var pdb = new MemoryStream();
+            var writerParameters = new WriterParameters
             {
-                var writerParameters = new WriterParameters
-                {
-                    WriteSymbols = true,
-                    SymbolStream = pdb,
-                    SymbolWriterProvider = new PortablePdbWriterProvider()
-                };
+                WriteSymbols = true,
+                SymbolStream = pdb,
+                SymbolWriterProvider = new PortablePdbWriterProvider()
+            };
 
-                assembly.Write(pe, writerParameters);
-                return new ILPostProcessResult(new InMemoryAssembly(pe.ToArray(), pdb.ToArray()));
-            }
+            assembly.Write(pe, writerParameters);
+            return new ILPostProcessResult(new InMemoryAssembly(pe.ToArray(), pdb.ToArray()));
         }
     }
 }

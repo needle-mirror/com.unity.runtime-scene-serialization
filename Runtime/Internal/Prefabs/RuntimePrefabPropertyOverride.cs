@@ -1,12 +1,12 @@
 ﻿using System;
-using System.Collections.Generic;
-using System.Linq;
-using UnityEditor;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
-#if !ENABLE_IL2CPP
+#if UNITY_EDITOR
+using System.Collections.Generic;
+using System.Linq;
 using System.Reflection;
+using UnityEditor;
 #endif
 
 namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
@@ -157,7 +157,6 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 case SerializedPropertyType.ManagedReference:
                     Debug.LogWarning($"Encountered managed reference property override override for {propertyPath}");
                     return null;
-
                 default:
                     Debug.LogWarning($"Unknown property type in prefab override for {propertyPath}");
                     return null;

@@ -108,13 +108,13 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
             AddedGameObjects = new List<RuntimeAddedGameObject>();
             AddedComponents = new List<RuntimeAddedComponent>();
-            GetMetadataRecursively(gameObject, metadata);
+            GetMetadataRecursively(gameObject, metadata, true);
         }
 
-        void GetMetadataRecursively(GameObject gameObject, SerializationMetadata metadata, string parentTransformPath = "", string transformPath = "")
+        void GetMetadataRecursively(GameObject gameObject, SerializationMetadata metadata, bool isRoot, string parentTransformPath = "", string transformPath = "")
         {
             var transform = gameObject.transform;
-            if (PrefabUtility.IsAddedGameObjectOverride(gameObject))
+            if (PrefabUtility.IsAddedGameObjectOverride(gameObject) && !isRoot)
             {
                 AddedGameObjects.Add(new RuntimeAddedGameObject
                 {
@@ -142,7 +142,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 if (!string.IsNullOrEmpty(transformPath))
                     childTransformPath = $"{transformPath}/{child.name}";
 
-                GetMetadataRecursively(child.gameObject, metadata, transformPath, childTransformPath);
+                GetMetadataRecursively(child.gameObject, metadata, false, transformPath, childTransformPath);
             }
         }
 #endif

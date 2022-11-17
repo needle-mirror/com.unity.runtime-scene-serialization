@@ -136,27 +136,27 @@ namespace Unity.RuntimeSceneSerialization.Internal
         internal static void GetTransformPathAndComponentIndex(Transform root, UnityObject target,
             out string transformPath, out int componentIndex)
         {
-            if (target is GameObject targetGameObject)
+            switch (target)
             {
-                transformPath = root.GetTransformPath(targetGameObject.transform);
-                componentIndex = -1;
-                return;
-            }
-
-            if (target is Component targetComponent)
-            {
-                transformPath = root.GetTransformPath(targetComponent.transform);
-                targetComponent.GetComponents(k_Components);
-                var index = k_Components.IndexOf(targetComponent);
-                if (index < 0)
-                {
-                    Debug.LogError($"Could not get find {targetComponent} on {targetComponent.gameObject}");
+                case GameObject targetGameObject:
+                    transformPath = root.GetTransformPath(targetGameObject.transform);
                     componentIndex = -1;
                     return;
-                }
+                case Component targetComponent:
+                {
+                    transformPath = root.GetTransformPath(targetComponent.transform);
+                    targetComponent.GetComponents(k_Components);
+                    var index = k_Components.IndexOf(targetComponent);
+                    if (index < 0)
+                    {
+                        Debug.LogError($"Could not get find {targetComponent} on {targetComponent.gameObject}");
+                        componentIndex = -1;
+                        return;
+                    }
 
-                componentIndex = index;
-                return;
+                    componentIndex = index;
+                    return;
+                }
             }
 
             Debug.LogError($"Could not get transform path and component index for object {target}");
@@ -213,6 +213,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
             if (!(propertyBag is IPropertyBag<TContainer> typedPropertyBag))
                 return;
 
+            typedPropertyBag.Register();
             var containerType = typeof(TContainer);
             if (containerType.IsArray)
             {
@@ -233,5 +234,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
             }
         }
 #endif
+
+        internal static bool IsContainerType<T>()
+        {
+            return RuntimeTypeInfoCache<T>.IsContainerType;
+        }
     }
 }

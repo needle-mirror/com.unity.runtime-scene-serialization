@@ -24,15 +24,13 @@ namespace Unity.RuntimeSceneSerialization.EditorInternal
 
                 if (metadata != null)
                 {
-                    using (var scrollView = new EditorGUILayout.ScrollViewScope(m_ScrollPosition))
+                    using var scrollView = new EditorGUILayout.ScrollViewScope(m_ScrollPosition);
+                    m_ScrollPosition = scrollView.scrollPosition;
+                    using (new EditorGUI.DisabledScope(true))
                     {
-                        m_ScrollPosition = scrollView.scrollPosition;
-                        using (new EditorGUI.DisabledScope(true))
+                        foreach (var (index, element) in metadata.SortedObjectList)
                         {
-                            foreach (var tuple in metadata.SortedObjectList)
-                            {
-                                EditorGUILayout.ObjectField(tuple.Item1.ToString(), tuple.Item2, typeof(UnityObject), true);
-                            }
+                            EditorGUILayout.ObjectField(index.ToString(), element, typeof(UnityObject), true);
                         }
                     }
                 }

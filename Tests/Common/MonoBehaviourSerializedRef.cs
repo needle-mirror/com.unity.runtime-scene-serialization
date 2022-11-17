@@ -36,7 +36,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
 #if UNITY_2019_4_OR_NEWER
         [SerializeReference]
         // ReSharper disable once MemberCanBePrivate.Global
-        public object polyMorphic;
+        public object polymorphic;
 #endif
 
         public void SetKnownState()
@@ -57,7 +57,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             m_Root.m_nodes[1].m_nodes.Add(new Node { m_data = i++, m_BackPointer = backPointer});
 
 #if UNITY_2019_4_OR_NEWER
-            polyMorphic = new Node { m_data = i };
+            polymorphic = new Node { m_data = i };
 #endif
         }
 
@@ -71,7 +71,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.AreEqual(i++, m_Root.m_nodes[1].m_nodes[0].m_data);
 
 #if UNITY_2019_4_OR_NEWER
-            Assert.AreEqual(i, ((Node)polyMorphic).m_data);
+            Assert.AreEqual(i, ((Node)polymorphic).m_data);
 #endif
 
             // With SerializeReference Null is supported

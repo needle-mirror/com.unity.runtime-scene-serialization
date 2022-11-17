@@ -4,6 +4,15 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [0.6.2-preview] - 2022-11-17
+### Fixed
+- Removed check for negative fileID; it was blocking valid asset references from being serialized.
+
+## [0.6.1-preview] - 2022-07-31
+### Fixed
+- Issues with MonoBehaviours from pre-compiled DLLs in AOT builds.
+- StackOverflowExceptions when serializing prefabs with added child objects which are also prefabs.
+
 ## [0.6.0-preview] - 2022-05-12
 ### Changed
 - Properties and Serialization dependency version to 1.8.2-preview
@@ -16,6 +25,15 @@ and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.
 ### Changed
 - Minimum Editor version to 2020.1.0f1
 - Properties and Serialization dependency version to 1.6.0-preview
+
+## [0.3.7-preview] - 2022-11-17
+### Fixed
+- Removed check for negative fileID; it was blocking valid asset references from being serialized.
+
+## [0.3.6-preview] - 2022-07-31
+### Fixed
+- Issues with MonoBehaviours from pre-compiled DLLs in AOT builds.
+- StackOverflowExceptions when serializing prefabs with added child objects which are also prefabs.
 
 ## [0.3.5-preview] - 2022-05-05
 ### Added

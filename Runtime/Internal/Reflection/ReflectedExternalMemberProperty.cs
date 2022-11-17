@@ -109,11 +109,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 return (TValue)m_Info.GetValue(containerValue);
             }
 
-            if (m_ExternalMemberType != null)
-                return GetExternalMemberValue(container);
-
-            // Should be unreachable but fall back to default
-            return default;
+            return m_ExternalMemberType != null ? GetExternalMemberValue(container) : default;
         }
 
         object GetContainerValue(TContainer container)
@@ -187,8 +183,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 return (TValue)m_ExternalMemberContainerList;
             }
 
-            if (m_ExternalMemberContainer == null)
-                m_ExternalMemberContainer = Activator.CreateInstance<TValue>();
+            m_ExternalMemberContainer ??= Activator.CreateInstance<TValue>();
 
             k_ExternalMemberField.SetValue(m_ExternalMemberContainer, m_Info.GetValue(container));
             return m_ExternalMemberContainer;

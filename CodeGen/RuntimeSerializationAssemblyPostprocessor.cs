@@ -1,22 +1,20 @@
-﻿using System;
+﻿using Mono.Cecil;
+using Mono.Cecil.Cil;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
 using UnityEditor;
 using UnityEditor.Compilation;
-using UnityEngine;
-using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
     /// <summary>
-    /// ILPostProcessor responsible for codegen that supports the GenericMethodWrapper API
+    /// ILPostProcessor responsible for code generation that supports the GenericMethodWrapper API
     /// </summary>
     [InitializeOnLoad]
     class RuntimeSerializationAssemblyPostprocessor : ILPostProcessor
@@ -31,6 +29,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         const string k_CallGenericMethod = "CallGenericMethod";
         static readonly string k_SerializationUtilsTypeName = typeof(SerializationUtils).FullName;
         static readonly HashSet<string> k_PlayerAssemblies = new HashSet<string>();
+        static readonly HashSet<string> k_PlayerWithoutTestAssemblies = new HashSet<string>();
+        static readonly HashSet<string> k_PreCompiledAssemblies = new HashSet<string>();
 
         public override ILPostProcessor GetInstance()
         {
@@ -44,7 +44,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static bool ShouldProcess(ICompiledAssembly compiledAssembly)
         {
-            if (!compiledAssembly.RequiresCodegen())
+            if (!compiledAssembly.RequiresCodeGen())
                 return false;
 
             return compiledAssembly.Name == CodeGenUtils.RuntimeSerializationAssemblyName;
@@ -53,33 +53,25 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static RuntimeSerializationAssemblyPostprocessor()
         {
             // Hard-code "Temp" because of missing method exception trying to use Application.temporaryCachePath
-            var tempAssembliesPath = Path.Combine("Temp", "PlayerAssemblies");
-            if (File.Exists(tempAssembliesPath))
-            {
-                var assemblies = File.ReadAllText(tempAssembliesPath);
-                var split = assemblies.Split(',');
-                foreach (var assembly in split)
-                {
-                    k_PlayerAssemblies.Add(assembly);
-                }
-            }
+            var preCompiledAssembliesPath = Path.Combine("Temp", "PreCompiledAssemblies");
+            var playerAssembliesPath = Path.Combine("Temp", "PlayerAssemblies");
+            var playerWithoutTestAssembliesPath = Path.Combine("Temp", "PlayerWithoutTestAssemblies");
+            CodeGenUtils.ReadAssemblyList(preCompiledAssembliesPath, k_PreCompiledAssemblies);
+            CodeGenUtils.ReadAssemblyList(playerAssembliesPath, k_PlayerAssemblies);
+            CodeGenUtils.ReadAssemblyList(playerWithoutTestAssembliesPath, k_PlayerWithoutTestAssemblies);
 
             EditorApplication.delayCall += () =>
             {
-                k_PlayerAssemblies.Clear();
-                var assemblies = UnityEditor.Compilation.CompilationPipeline.GetAssemblies(AssembliesType.PlayerWithoutTestAssemblies);
-                foreach (var assembly in assemblies)
-                {
-                    k_PlayerAssemblies.Add(Path.GetFullPath(assembly.outputPath));
-                }
-
-                File.WriteAllText(tempAssembliesPath, string.Join(",", k_PlayerAssemblies));
+                var assemblies = UnityEditor.Compilation.CompilationPipeline.GetPrecompiledAssemblyPaths(UnityEditor.Compilation.CompilationPipeline.PrecompiledAssemblySources.All);
+                CodeGenUtils.WriteAssemblyList(preCompiledAssembliesPath, k_PreCompiledAssemblies, assemblies);
+                CodeGenUtils.WriteAssemblyList(playerAssembliesPath, k_PlayerAssemblies, AssembliesType.Player);
+                CodeGenUtils.WriteAssemblyList(playerWithoutTestAssembliesPath, k_PlayerWithoutTestAssemblies, AssembliesType.PlayerWithoutTestAssemblies);
             };
         }
 
-        static AssemblyDefinition CreateAssemblyDefinition(ICompiledAssembly compiledAssembly)
+        static AssemblyDefinition CreateAssemblyDefinition(ICompiledAssembly compiledAssembly, out PostProcessorAssemblyResolver resolver)
         {
-            var resolver = new PostProcessorAssemblyResolver(compiledAssembly);
+            resolver = new PostProcessorAssemblyResolver(compiledAssembly);
 
             var readerParameters = new ReaderParameters
             {
@@ -114,17 +106,19 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
 #endif
 
-            using (var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly))
-            {
-                return ProcessAssembly(assemblyDefinition);
-            }
+            var isTestBuild = compiledAssembly.Defines.Contains("UNITY_INCLUDE_TESTS");
+            using var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly, out var resolver);
+            return ProcessAssembly(assemblyDefinition, resolver, isTestBuild);
         }
 
-        static ILPostProcessResult ProcessAssembly(AssemblyDefinition compiledAssembly)
+        static ILPostProcessResult ProcessAssembly(AssemblyDefinition compiledAssembly, PostProcessorAssemblyResolver resolver, bool isTestBuild)
         {
-            if (k_PlayerAssemblies.Count == 0)
+            var assemblies = new HashSet<string>();
+            assemblies.UnionWith(isTestBuild ? k_PlayerAssemblies : k_PlayerWithoutTestAssemblies);
+            assemblies.UnionWith(k_PreCompiledAssemblies);
+            if (assemblies.Count == 0)
             {
-                Console.WriteLine("Error: No Player assemblies");
+                Console.WriteLine("Error: No assemblies to process in RuntimeSerializationAssemblyPostProcessor");
                 return null;
             }
 
@@ -141,7 +135,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             assemblyInclusions.Add(CodeGenUtils.RuntimeSerializationAssemblyName);
 
             var searchPaths = new HashSet<string>();
-            foreach (var path in k_PlayerAssemblies)
+            foreach (var path in assemblies)
             {
                 searchPaths.Add(Path.GetDirectoryName(path));
             }
@@ -155,22 +149,21 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (string.IsNullOrEmpty(location))
                     continue;
 
-                k_PlayerAssemblies.Add(location);
+                assemblies.Add(location);
 
                 var fullPath = Path.GetDirectoryName(location);
                 if (!string.IsNullOrEmpty(fullPath))
                     searchPaths.Add(fullPath);
             }
 
-            var assemblyResolver = new DefaultAssemblyResolver();
             foreach (var path in searchPaths)
             {
-                assemblyResolver.AddSearchDirectory(path);
+                resolver.AddSearchDirectory(path);
             }
 
-            foreach (var path in k_PlayerAssemblies)
+            foreach (var path in assemblies)
             {
-                var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters{AssemblyResolver = assemblyResolver});
+                var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { AssemblyResolver = resolver });
                 var name = assembly.Name.Name;
                 if (!assemblyInclusions.Contains(name))
                     continue;
@@ -190,11 +183,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             }
 
             PostProcessGenericMethodWrapper(componentTypes, module);
-            if (!Directory.Exists("Logs"))
-                Directory.CreateDirectory("Logs");
-
-            File.AppendAllText("Logs/RuntimeSerializationLogs.txt",
-                $"Added {componentTypes.Count} components to GenericMethodWrapper\n");
 
             return CreatePostProcessResult(compiledAssembly);
         }
@@ -204,7 +192,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var serializationUtilsType = module.GetType(k_SerializationUtilsTypeName);
             if (serializationUtilsType == null)
             {
-                Console.Error.WriteLine($"Could not find {k_SerializationUtilsTypeName}");
+                Console.WriteLine($"Error: Could not find type: {k_SerializationUtilsTypeName}");
                 return;
             }
 
@@ -212,22 +200,26 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             MethodDefinition callGenericMethodMethod = null;
             foreach (var method in serializationUtilsType.Methods)
             {
-                if (method.Name == k_InvokeGenericMethodWrapper)
-                    invokeGenericMethodWrapperMethod = method;
-
-                if (method.Name == k_CallGenericMethod)
-                    callGenericMethodMethod = method;
+                switch (method.Name)
+                {
+                    case k_InvokeGenericMethodWrapper:
+                        invokeGenericMethodWrapperMethod = method;
+                        break;
+                    case k_CallGenericMethod:
+                        callGenericMethodMethod = method;
+                        break;
+                }
             }
 
             if (invokeGenericMethodWrapperMethod == null)
             {
-                Console.Error.WriteLine($"Could not find {k_InvokeGenericMethodWrapper}");
+                Console.WriteLine($"Error: Could not find type: {k_InvokeGenericMethodWrapper}");
                 return;
             }
 
             if (callGenericMethodMethod == null)
             {
-                Console.Error.WriteLine($"Could not find {k_CallGenericMethod}");
+                Console.WriteLine($"Error: Could not find type: {k_CallGenericMethod}");
                 return;
             }
 
@@ -242,7 +234,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var firstBranch = instructions.FirstOrDefault(instruction => instruction.OpCode == OpCodes.Brfalse_S);
             if (firstBranch == null)
             {
-                Console.Error.WriteLine("Failed to find the branch we need to replace");
+                Console.WriteLine("Error: Failed to find the branch we need to replace");
                 return;
             }
 
@@ -260,8 +252,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var variables = methodBody.Variables;
             foreach (var container in componentTypes)
             {
-                Console.WriteLine($"WRAPPER FOR {container.TypeReference.Name}");
                 var type = container.TypeReference;
+                Console.WriteLine($"ADD WRAPPER FOR {type.Name}");
+
                 var instanceVariable = new VariableDefinition(type);
                 var boolVariable = new VariableDefinition(boolType);
                 variables.Add(instanceVariable);
@@ -310,7 +303,11 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             while (baseType != null)
             {
                 count++;
-                baseType = baseType.Resolve().BaseType;
+                var resolved = baseType.Resolve();
+                if (resolved == null)
+                    break;
+
+                baseType = resolved.BaseType;
             }
 
             return count;
@@ -318,19 +315,17 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static ILPostProcessResult CreatePostProcessResult(AssemblyDefinition assembly)
         {
-            using (var pe = new MemoryStream())
-            using (var pdb = new MemoryStream())
+            using var pe = new MemoryStream();
+            using var pdb = new MemoryStream();
+            var writerParameters = new WriterParameters
             {
-                var writerParameters = new WriterParameters
-                {
-                    WriteSymbols = true,
-                    SymbolStream = pdb,
-                    SymbolWriterProvider = new PortablePdbWriterProvider()
-                };
+                WriteSymbols = true,
+                SymbolStream = pdb,
+                SymbolWriterProvider = new PortablePdbWriterProvider()
+            };
 
-                assembly.Write(pe, writerParameters);
-                return new ILPostProcessResult(new InMemoryAssembly(pe.ToArray(), pdb.ToArray()));
-            }
+            assembly.Write(pe, writerParameters);
+            return new ILPostProcessResult(new InMemoryAssembly(pe.ToArray(), pdb.ToArray()));
         }
     }
 }

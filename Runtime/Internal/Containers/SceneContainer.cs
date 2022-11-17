@@ -2,7 +2,6 @@
 using System.Collections.Generic;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.Internal
 {
@@ -73,6 +72,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
         /// <summary>
         /// Apply this scene container's render settings to the current render settings
         /// </summary>
-        public void ApplyRenderSettings() { m_RenderSettings.ApplyValuesToRenderSettings(); }
+        public void ApplyRenderSettings() { m_RenderSettings?.ApplyValuesToRenderSettings(); }
     }
 }

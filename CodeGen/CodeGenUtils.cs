@@ -1,5 +1,5 @@
-﻿//#define PROPERTY_GENERATION_LOG
-
+﻿using Mono.Cecil;
+using Mono.Cecil.Cil;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -7,15 +7,18 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
-using UnityEditor;
+using UnityEditor.Compilation;
 using UnityEngine;
+using MethodBody = Mono.Cecil.Cil.MethodBody;
 using TypeAttributes = Mono.Cecil.TypeAttributes;
 using UnityObject = UnityEngine.Object;
+
+#if UNITY_2020_1_OR_NEWER
+using UnityEditor;
+#endif
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
@@ -53,13 +56,12 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         const string k_IgnoreTypeName = "UnityEngine.Bindings.IgnoreAttribute";
         const string k_EnableIl2CppDefine = "ENABLE_IL2CPP";
         const string k_NetDotsDefine = "NET_DOTS";
-        const string k_NUnitFrameworkAssemblyName = "nunit.framework";
 
 #if UNITY_2020_1_OR_NEWER
         static bool s_Initialized;
 #endif
 
-        internal static bool RequiresCodegen(this ICompiledAssembly compiledAssembly)
+        internal static bool RequiresCodeGen(this ICompiledAssembly compiledAssembly)
         {
             var containsIl2Cpp = compiledAssembly.Defines.Contains(k_EnableIl2CppDefine);
             return containsIl2Cpp || compiledAssembly.Defines.Contains(k_NetDotsDefine);
@@ -127,10 +129,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 var resolvedType = type.Resolve();
                 if (resolvedType != null)
                     isSerializable = resolvedType.IsEnum || (resolvedType.Attributes & TypeAttributes.Serializable) != 0;
-#if PROPERTY_GENERATION_LOG
                 else
-                    Console.Error.WriteLine($"{type} in {type.Module.Assembly.Name} cannot be resolved");
-#endif
+                    Console.WriteLine($"Error: {type} in {type.Module.Assembly.Name} cannot be resolved");
             }
 
             k_SerializableTypes[typeName] = isSerializable;
@@ -150,7 +150,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var isPrimitive = TypeIsPrimitive(type, typeName);
             var isAbstractOrInterface = type.IsAbstract || type.IsInterface;
             isSerializableContainer = !(isPrimitive || isAbstractOrInterface || isOpenGeneric)
-                && ((type.Attributes & TypeAttributes.Serializable) != 0 || type.Namespace == "UnityEngine");
+                && ((type.Attributes & TypeAttributes.Serializable) != 0
+                || type.IsValueType && type.Namespace == "UnityEngine");
 
             k_SerializableContainerTypes[typeName] = isSerializableContainer;
 
@@ -165,22 +166,19 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return type.IsPrimitive || type.IsEnum || typeName == k_StringTypeName;
         }
 
-        internal static bool IsAssignableToUnityObject(TypeReference memberType)
+        internal static bool IsAssignableToUnityObject(TypeReference type)
         {
-            var typeName = memberType.FullName;
+            var typeName = type.FullName;
             if (typeName == k_UnityObjectTypeName)
                 return true;
 
             if (k_KnownUnityObjectTypes.TryGetValue(typeName, out var isAssignable))
                 return isAssignable;
 
-            var resoledType = memberType.Resolve();
+            var resoledType = type.Resolve();
             if (resoledType == null)
             {
-#if PROPERTY_GENERATION_LOG
-                Console.Error.WriteLine($"{memberType} in {memberType.Module.Assembly.Name} cannot be resolved");
-#endif
-
+                Console.WriteLine($"Error: {type} in {type.Module.Assembly.Name} cannot be resolved");
                 return false;
             }
 
@@ -198,22 +196,19 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return isAssignable;
         }
 
-        static bool IsAssignableToComponent(TypeReference memberType)
+        static bool IsAssignableToComponent(TypeReference type)
         {
-            var typeName = memberType.FullName;
+            var typeName = type.FullName;
             if (typeName == k_ComponentTypeName)
                 return true;
 
             if (k_KnownComponentTypes.TryGetValue(typeName, out var isAssignable))
                 return isAssignable;
 
-            var resoledType = memberType.Resolve();
+            var resoledType = type.Resolve();
             if (resoledType == null)
             {
-#if PROPERTY_GENERATION_LOG
-                Console.Error.WriteLine($"{memberType} in {memberType.Module.Assembly.Name} cannot be resolved");
-#endif
-
+                Console.WriteLine($"Error: {type} in {type.Module.Assembly.Name} cannot be resolved");
                 return false;
             }
 
@@ -223,7 +218,15 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (baseType.FullName == k_ComponentTypeName)
                     break;
 
-                baseType = baseType.Resolve().BaseType;
+                var resolved = baseType.Resolve();
+                if (resolved == null)
+                {
+                    Console.WriteLine($"Error: {baseType} in {baseType.Module.Assembly.Name} cannot be resolved");
+                    baseType = null;
+                    break;
+                }
+
+                baseType = resolved.BaseType;
             }
 
             isAssignable = baseType != null;
@@ -595,29 +598,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return attributes;
         }
 
-        public static void ForEachBuiltInAssembly(Action<Assembly> callback)
-        {
-            var editorAssemblyPath = Path.GetDirectoryName(Assembly.GetAssembly(typeof(EditorApplication)).Location);
-            if (string.IsNullOrEmpty(editorAssemblyPath))
-            {
-                Console.WriteLine("Error: Could not find editor assemblies");
-                return;
-            }
-
-            foreach (var path in Directory.GetFiles(editorAssemblyPath, "*.dll", SearchOption.AllDirectories))
-            {
-                try
-                {
-                    var assembly = Assembly.LoadFrom(path);
-                    callback(assembly);
-                }
-                catch
-                {
-                    // ignored
-                }
-            }
-        }
-
 #if UNITY_2020_1_OR_NEWER
         [InitializeOnLoadMethod]
         static void InitializeOnLoad()
@@ -658,6 +638,86 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             }
         }
 #endif
+
+        public static void PostProcessPropertyBag(Context context, MethodBody ctorMethodBody, Instruction baseCtorCall)
+        {
+            var il = ctorMethodBody.GetILProcessor();
+            var nop = il.Create(OpCodes.Nop);
+            var ret = il.Create(OpCodes.Ret);
+            var leave = il.Create(OpCodes.Leave, ret);
+
+            il.InsertAfter(ctorMethodBody.Instructions.Last(), nop);
+            il.InsertAfter(nop, leave);
+            il.InsertAfter(leave, ret);
+
+            var handler = new ExceptionHandler(ExceptionHandlerType.Catch)
+            {
+                TryStart = baseCtorCall.Next,
+                TryEnd = nop,
+                HandlerStart = nop,
+                HandlerEnd = ret,
+                CatchType = context.Module.ImportReference(typeof(Exception))
+            };
+
+            ctorMethodBody.ExceptionHandlers.Add(handler);
+        }
+
+        public static void WriteAssemblyList(string playerAssembliesPath, HashSet<string> hashSet, AssembliesType type)
+        {
+            try
+            {
+                hashSet.Clear();
+                var assemblies = UnityEditor.Compilation.CompilationPipeline.GetAssemblies(type);
+                foreach (var assembly in assemblies)
+                {
+                    hashSet.Add(Path.GetFullPath(assembly.outputPath));
+                }
+
+                File.WriteAllText(playerAssembliesPath, string.Join(",", hashSet));
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        public static void WriteAssemblyList(string playerAssembliesPath, HashSet<string> hashSet, string[] assemblies)
+        {
+            try
+            {
+                hashSet.Clear();
+                foreach (var assembly in assemblies)
+                {
+                    hashSet.Add(Path.GetFullPath(assembly));
+                }
+
+                File.WriteAllText(playerAssembliesPath, string.Join(",", hashSet));
+            }
+            catch
+            {
+                // ignored
+            }
+        }
+
+        public static void ReadAssemblyList(string path, HashSet<string> hashSet)
+        {
+            try
+            {
+                if (File.Exists(path))
+                {
+                    var assemblies = File.ReadAllText(path);
+                    var split = assemblies.Split(',');
+                    foreach (var assembly in split)
+                    {
+                        hashSet.Add(assembly);
+                    }
+                }
+            }
+            catch
+            {
+                // ignored
+            }
+        }
     }
 
     static class MetadataTokenProviderExtensions

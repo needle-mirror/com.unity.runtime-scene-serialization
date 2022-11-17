@@ -1,5 +1,4 @@
 ﻿using System;
-using UnityEngine;
 
 namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 {

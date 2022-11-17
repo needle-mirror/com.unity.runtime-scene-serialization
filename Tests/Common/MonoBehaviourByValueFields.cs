@@ -31,7 +31,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
         {
             None = 0,
             Flag10 = 1 << 9,
-            Flag32 = 1u << 31,
+            Flag32 = 1u << 31
         }
 
         // TODO: Non-ascii utf8 characters

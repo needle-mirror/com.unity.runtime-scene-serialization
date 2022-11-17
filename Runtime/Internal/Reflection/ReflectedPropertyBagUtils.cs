@@ -1,6 +1,4 @@
-﻿//#define PROPERTY_GENERATION_LOG
-
-using System;
+﻿using System;
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
@@ -14,8 +12,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
     static class ReflectedPropertyBagUtils
     {
         static readonly Dictionary<Type, bool> k_ListTypes = new Dictionary<Type, bool>();
-
-        static readonly Dictionary<Type, bool> k_SerializableContainerTypes = new Dictionary<Type, bool>();
         static readonly Dictionary<Type, bool> k_SerializableTypes = new Dictionary<Type, bool>();
 
         static readonly Dictionary<Type, bool> k_KnownUnityObjectTypes = new Dictionary<Type, bool>();
@@ -84,24 +80,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
             isList = type.IsGenericType && typeof(IList).IsAssignableFrom(type);
             k_ListTypes[type] = isList;
             return isList;
-        }
-
-        internal static bool IsSerializableContainer(Type type)
-        {
-            if (k_SerializableContainerTypes.TryGetValue(type, out var isSerializableContainer))
-                return isSerializableContainer;
-
-            var isPrimitive = type.IsPrimitive || type.IsEnum || type == k_StringType;
-            var isAbstractOrInterface = type.IsAbstract || type.IsInterface;
-            isSerializableContainer = !(isPrimitive || isAbstractOrInterface)
-                && (type.GetCustomAttribute<SerializableAttribute>() != null
-                || type.Namespace == "UnityEngine");
-
-            k_SerializableContainerTypes[type] = isSerializableContainer;
-            if (isSerializableContainer)
-                k_SerializableTypes[type] = true;
-
-            return isSerializableContainer;
         }
 
         static bool IsSerializable(Type type)
@@ -218,15 +196,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
                     return true;
             }
 
-            var propertyType = propertyDefinition.PropertyType;
-            if (propertyType.IsArray)
-                propertyType = propertyType.GetElementType();
-            else if (IsListType(propertyType))
-                propertyType = propertyType.GenericTypeArguments[0];
-
-            if (!IsSerializable(propertyType))
-                return false;
-
             return false;
         }
 
@@ -283,12 +252,17 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 if (attributeTypeName == k_SerializeFieldTypeName)
                     hasSerializeField = true;
 
-                if (attributeTypeName == k_IgnoreTypeName)
-                    hasIgnore = true;
+                switch (attributeTypeName)
+                {
+                    case k_IgnoreTypeName:
+                        hasIgnore = true;
+                        break;
 
-                // Override name if [NativeName("m_NewName)] is used
-                if (attributeTypeName == k_NativeNameTypeName)
-                    nameOverride = attribute.ConstructorArguments[0].Value as string;
+                    // Override name if [NativeName("m_NewName)] is used
+                    case k_NativeNameTypeName:
+                        nameOverride = attribute.ConstructorArguments[0].Value as string;
+                        break;
+                }
             }
 
             attributes = (hasSerializeField, hasIgnore, nameOverride);

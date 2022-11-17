@@ -10,7 +10,6 @@ using Unity.XRTools.Utils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
 using EventType = Unity.Serialization.Json.EventType;
-using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization
 {
@@ -26,6 +25,17 @@ namespace Unity.RuntimeSceneSerialization
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
         static readonly List<GameObject> k_Roots = new List<GameObject>();
         static readonly List<DeserializationEvent> k_Events = new List<DeserializationEvent>();
+
+        static readonly HashSet<Type> k_IgnoredTypes = new HashSet<Type>
+        {
+            typeof(AnimationCurve),
+            typeof(Keyframe),
+            typeof(Vector2Int),
+            typeof(Vector3Int),
+            typeof(Rect),
+            typeof(RectInt),
+            typeof(BoundsInt)
+        };
 
         /// <summary>
         /// Load a scene from JSON into the active scene
@@ -50,6 +60,10 @@ namespace Unity.RuntimeSceneSerialization
             try
             {
                 SerializationUtils.DeserializeScene(json, metadata, ref container);
+            }
+            catch (FormatException)
+            {
+                throw;
             }
             catch (Exception e)
             {
@@ -102,8 +116,6 @@ namespace Unity.RuntimeSceneSerialization
 
             using (var writer = new JsonStringBuffer(parameters.InitialCapacity, Allocator.Temp))
             {
-                var container = new PropertyWrapper<T>(value);
-
                 var visitor = new JsonSceneWriter(metadata);
 
                 visitor.SetStringWriter(writer);
@@ -111,7 +123,17 @@ namespace Unity.RuntimeSceneSerialization
                 visitor.SetMinified(parameters.Minified);
                 visitor.SetSimplified(parameters.Simplified);
 
-                using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
+                if (value is GameObject gameObject)
+                {
+                    var container = new PropertyWrapper<GameObjectContainer>(new GameObjectContainer(gameObject, metadata));
+                    using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
+                }
+                else
+                {
+                    var container = new PropertyWrapper<T>(value);
+                    using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
+                }
+
                 return writer.ToString();
             }
         }
@@ -149,20 +171,43 @@ namespace Unity.RuntimeSceneSerialization
                         reader.Read(out var document);
 
                         k_Events.Clear();
-                        var visitor = new JsonSceneReader(new SerializationMetadata());
-                        visitor.SetView(document.AsUnsafe());
-                        visitor.SetEvents(k_Events);
-                        var container = new PropertyWrapper<T>(value);
-                        try
+                        if (typeof(T) == typeof(GameObject))
                         {
-                            using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
-                        }
-                        catch (Exception e)
-                        {
-                            k_Events.Add(new DeserializationEvent(EventType.Exception, e));
-                        }
+                            var gameObject = value as GameObject;
+                            if (gameObject == null)
+                                gameObject = new GameObject();
 
-                        value = container.Value;
+                            var metadata = new SerializationMetadata();
+                            var container = new GameObjectContainer(gameObject, metadata);
+                            var visitor = new GameObjectVisitor(document.AsUnsafe(), k_Events, metadata, null, null, default);
+                            try
+                            {
+                                using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
+                            }
+                            catch (Exception e)
+                            {
+                                k_Events.Add(new DeserializationEvent(EventType.Exception, e));
+                            }
+
+                            value = (T)(object)container.GameObject;
+                        }
+                        else
+                        {
+                            var visitor = new JsonSceneReader(new SerializationMetadata());
+                            visitor.SetView(document.AsUnsafe());
+                            visitor.SetEvents(k_Events);
+                            var container = new PropertyWrapper<T>(value);
+                            try
+                            {
+                                using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
+                            }
+                            catch (Exception e)
+                            {
+                                k_Events.Add(new DeserializationEvent(EventType.Exception, e));
+                            }
+
+                            value = container.Value;
+                        }
 
                         var result = SerializationUtils.CreateResult(k_Events);
                         if (!result.DidSucceed())
@@ -218,6 +263,10 @@ namespace Unity.RuntimeSceneSerialization
         public static void RegisterPropertyBagRecursively(Type type)
         {
             if (!RuntimeTypeInfoCache.IsContainerType(type) || type.IsGenericTypeDefinition || type.IsAbstract || type.IsInterface)
+                return;
+
+            // Do not override default property bags from properties package
+            if (k_IgnoredTypes.Contains(type))
                 return;
 
             var propertyBag = ReflectedPropertyBagProvider.Instance.CreatePropertyBag(type);

@@ -1,5 +1,4 @@
-﻿using System;
-using System.Collections.Generic;
+﻿using System.Collections.Generic;
 using Unity.Properties;
 using Unity.Properties.Internal;
 using Unity.Serialization.Json;
@@ -43,6 +42,9 @@ namespace Unity.RuntimeSceneSerialization.Internal
                     }
                 }
             }
+
+            if (container is IFormatVersion formatVersion)
+                formatVersion.CheckFormatVersion();
         }
     }
 }

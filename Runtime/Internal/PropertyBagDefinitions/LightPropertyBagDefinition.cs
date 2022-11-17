@@ -3,6 +3,11 @@ using UnityEngine;
 
 namespace Unity.RuntimeSceneSerialization.Internal
 {
+    // Note: the following properties are serialized in the Editor but do not exist at runtime:
+    // - shadowRadius
+    // - shadowAngle
+    // - areaSize
+    // - lightmapBakeType
     static class LightPropertyBagDefinition
     {
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]
@@ -14,6 +19,8 @@ namespace Unity.RuntimeSceneSerialization.Internal
             ReflectedPropertyBagUtils.SetIncludedProperties(typeof(Light), new HashSet<string>
             {
                 nameof(Light.color),
+                nameof(Light.boundingSphereOverride),
+                nameof(Light.useColorTemperature),
 #if UNITY_EDITOR
                 nameof(Light.areaSize)
 #endif
@@ -46,7 +53,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
             light.shadowNearPlane = light.shadowNearPlane;
             light.shadowMatrixOverride = light.shadowMatrixOverride;
             light.useShadowMatrixOverride = light.useShadowMatrixOverride;
-            light.color = light.color;
             light.flare = light.flare;
             light.renderMode = light.renderMode;
             light.cullingMask = light.cullingMask;
@@ -57,6 +63,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
             light.useColorTemperature = light.useColorTemperature;
             light.boundingSphereOverride = light.boundingSphereOverride;
             light.useBoundingSphereOverride = light.useBoundingSphereOverride;
+
+#if UNITY_2020_3_OR_NEWER
+            light.useViewFrustumForShadowCasterCull = light.useViewFrustumForShadowCasterCull;
+#endif
         }
     }
 }

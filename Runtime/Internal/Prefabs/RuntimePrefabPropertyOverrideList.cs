@@ -24,6 +24,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 
         protected internal override void ApplyOverrideToTarget(UnityObject target, SerializationMetadata metadata)
         {
+            RuntimePrefabOverridePropertyVisitor.TemporaryQuaternionIsDirty = true;
             foreach (var propertyOverride in m_List)
             {
                 if (propertyOverride == null)

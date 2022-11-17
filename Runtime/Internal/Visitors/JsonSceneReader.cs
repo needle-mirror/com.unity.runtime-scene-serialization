@@ -513,7 +513,11 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
                         if (value == null)
                         {
-                            DefaultTypeConstruction.Construct(ref value, m_SerializedTypeProvider);
+                            // Special case for deserializing a single GameObject
+                            if (typeof(TValue) == typeof(GameObject))
+                                value = (TValue)(object)new GameObject();
+                            else
+                                DefaultTypeConstruction.Construct(ref value, m_SerializedTypeProvider);
                         }
                     }
                     catch (ArgumentException e)

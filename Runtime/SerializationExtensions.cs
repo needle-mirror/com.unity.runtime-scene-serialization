@@ -1,8 +1,6 @@
-﻿using System;
-using System.Linq;
+﻿using System.Linq;
 using Unity.Serialization.Json.Unsafe;
 using UnityEngine;
-using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization
 {

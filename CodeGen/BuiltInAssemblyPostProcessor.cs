@@ -1,31 +1,34 @@
-﻿using System;
+﻿using Mono.Cecil;
+using Mono.Cecil.Cil;
+using Mono.Cecil.Rocks;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Reflection;
-using Mono.Cecil;
-using Mono.Cecil.Cil;
-using Mono.Cecil.Rocks;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
 using Unity.Properties.CodeGen;
 using Unity.Properties.CodeGen.Blocks;
 using Unity.RuntimeSceneSerialization.Internal;
 using Unity.XRTools.Utils;
+using UnityEditor;
 using UnityEngine;
 using Assembly = System.Reflection.Assembly;
 using MethodImplAttributes = System.Reflection.MethodImplAttributes;
-using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
     /// <summary>
     /// ILPostProcessor responsible for generating property bags for types built into Unity
     /// </summary>
+    [InitializeOnLoad]
     class BuiltInAssemblyPostProcessor : ILPostProcessor
     {
         static readonly Type k_NativePropertyAttributeType = ReflectionUtils.FindType(type => type.Name == "NativePropertyAttribute");
         static readonly Type k_NativeNameAttributeType = ReflectionUtils.FindType(type => type.Name == "NativeNameAttribute");
         static readonly Type k_IgnoreAttributeType = ReflectionUtils.FindType(type => type.Name == "IgnoreAttribute");
+
+        static string s_EditorAssemblyLocation;
 
         static readonly HashSet<Type> k_IgnoredTypes = new HashSet<Type>
         {
@@ -37,6 +40,42 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             typeof(RectInt),
             typeof(BoundsInt)
         };
+
+        static readonly HashSet<string> k_PreCompiledAssemblies = new HashSet<string>();
+
+        static BuiltInAssemblyPostProcessor()
+        {
+            // Hard-code "Temp" because of missing method exception trying to use Application.temporaryCachePath
+            var editorLocationPath = Path.Combine("Temp", "EditorAssemblyLocation");
+            try
+            {
+                if (File.Exists(editorLocationPath))
+                    s_EditorAssemblyLocation = File.ReadAllText(editorLocationPath);
+            }
+            catch
+            {
+                // ignored
+            }
+
+            var preCompiledAssembliesPath = Path.Combine("Temp", "PreCompiledAssemblies");
+            CodeGenUtils.ReadAssemblyList(preCompiledAssembliesPath, k_PreCompiledAssemblies);
+
+            EditorApplication.delayCall += () =>
+            {
+                try
+                {
+                    s_EditorAssemblyLocation = Path.GetDirectoryName(typeof(EditorApplication).Assembly.Location);
+                    File.WriteAllText(editorLocationPath, s_EditorAssemblyLocation);
+                }
+                catch
+                {
+                    // ignored
+                }
+
+                var assemblies = UnityEditor.Compilation.CompilationPipeline.GetPrecompiledAssemblyPaths(UnityEditor.Compilation.CompilationPipeline.PrecompiledAssemblySources.All);
+                CodeGenUtils.WriteAssemblyList(preCompiledAssembliesPath, k_PreCompiledAssemblies, assemblies);
+            };
+        }
 
         public override ILPostProcessor GetInstance()
         {
@@ -50,7 +89,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static bool ShouldProcess(ICompiledAssembly compiledAssembly)
         {
-            if (!compiledAssembly.RequiresCodegen())
+            if (!compiledAssembly.RequiresCodeGen())
                 return false;
 
             return compiledAssembly.Name == CodeGenUtils.ExternalPropertyBagAssemblyName;
@@ -58,7 +97,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static AssemblyDefinition CreateAssemblyDefinition(ICompiledAssembly compiledAssembly)
         {
-            var resolver = new AssemblyResolver(compiledAssembly);
+            var resolver = new PostProcessorAssemblyResolver(compiledAssembly);
 
             var readerParameters = new ReaderParameters
             {
@@ -109,16 +148,42 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var assemblyInclusions = RuntimeSerializationSettingsUtils.GetAssemblyInclusions();
             var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
             var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
-            CodeGenUtils.ForEachBuiltInAssembly(assembly =>
+
+            var assemblies = new Dictionary<string, Assembly>();
+            var assemblyPaths = new HashSet<string>();
+            assemblyPaths.UnionWith(k_PreCompiledAssemblies);
+            assemblyPaths.UnionWith(Directory.GetFiles(s_EditorAssemblyLocation, "*.dll", SearchOption.AllDirectories));
+            foreach (var path in assemblyPaths)
             {
-                if (assembly.IsDynamic)
-                    return;
+                try
+                {
+                    var assembly = Assembly.LoadFrom(path);
+                    assemblies[assembly.GetName().Name] = assembly;
+                }
+                catch
+                {
+                    // Skip assemblies that are already loaded
+                }
+            }
 
-                if (!assemblyInclusions.Contains(assembly.GetName().Name))
-                    return;
+            foreach (var kvp in assemblies)
+            {
+                var assembly = kvp.Value;
+                try
+                {
+                    if (assembly.IsDynamic)
+                        continue;
 
-                PostProcessAssembly(namespaceExceptions, typeExceptions, assembly, fields, properties, serializableContainerTypes);
-            });
+                    if (!assemblyInclusions.Contains(kvp.Key))
+                        continue;
+
+                    PostProcessAssembly(namespaceExceptions, typeExceptions, assembly, fields, properties, serializableContainerTypes);
+                }
+                catch
+                {
+                    // ignored
+                }
+            }
 
             serializableContainerTypes.ExceptWith(k_IgnoredTypes);
 
@@ -126,12 +191,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 return null;
 
             GeneratePropertyBagsForSerializableTypes(context, serializableContainerTypes);
-
-            if (!Directory.Exists("Logs"))
-                Directory.CreateDirectory("Logs");
-
-            File.AppendAllText("Logs/RuntimeSerializationLogs.txt",
-                $"Generated {serializableContainerTypes.Count} property bags in {compiledAssembly.Name}\n");
 
             return CreatePostProcessResult(compiledAssembly);
         }
@@ -164,6 +223,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var propertyBagType = PropertyBag.GeneratePropertyBagHeader(context, containerType, out var ctorMethod, out var addPropertyMethod);
             var ctorMethodBody = ctorMethod.Body;
             var il = ctorMethodBody.GetILProcessor();
+            var baseCtorCall = ctorMethodBody.Instructions.Last();
             var instructions = ctorMethodBody.Instructions;
             var startMethod = il.Create(OpCodes.Nop);
             il.Append(startMethod);
@@ -233,23 +293,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             il.Emit(OpCodes.Ret);
 
-            var finalNop = il.Create(OpCodes.Nop);
-            var finalReturn = il.Create (OpCodes.Ret);
-            var finalLeave = il.Create (OpCodes.Leave, finalReturn);
+            CodeGenUtils.PostProcessPropertyBag(context, ctorMethodBody, baseCtorCall);
 
-            il.InsertAfter(instructions.Last(), finalNop);
-            il.InsertAfter (finalNop, finalLeave);
-            il.InsertAfter (finalLeave, finalReturn);
-
-            var finalHandler = new ExceptionHandler (ExceptionHandlerType.Catch) {
-                TryStart = startMethod,
-                TryEnd = finalNop,
-                HandlerStart = finalNop,
-                HandlerEnd = finalReturn,
-                CatchType = exceptionType
-            };
-
-            ctorMethodBody.ExceptionHandlers.Add (finalHandler);
             return propertyBagType;
         }
 
@@ -264,7 +309,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (type.IsGenericType)
                     continue;
 
-                if (!typeof(Component).IsAssignableFrom(type))
+                if (!typeof(Component).IsAssignableFrom(type) && !CodeGenUtils.IsSerializableContainer(type))
                     continue;
 
                 var typeName = type.FullName;

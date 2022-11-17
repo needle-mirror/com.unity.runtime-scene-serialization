@@ -109,11 +109,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 return (TValue)m_Info.GetValue(containerValue);
             }
 
-            if (m_ExternalMemberType != null)
-                return GetExternalMemberValue(container);
-
-            // Should be unreachable but fall back to default
-            return default;
+            return m_ExternalMemberType != null ? GetExternalMemberValue(container) : default;
         }
 
         object GetContainerValue(TContainer container)

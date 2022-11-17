@@ -7,7 +7,7 @@
     public interface IFormatVersion
     {
         /// <summary>
-        /// Called during deserialization after the first property is deserialized
+        /// Called during deserialization. Implementors may choose to throw an exception if the format versions do not match.
         /// </summary>
         void CheckFormatVersion();
     }

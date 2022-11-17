@@ -1,9 +1,12 @@
 ﻿using System;
 using System.Collections.Generic;
-using UnityEditor;
+using Unity.RuntimeSceneSerialization.Prefabs;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
-using Unity.RuntimeSceneSerialization.Prefabs;
+
+#if UNITY_EDITOR
+using UnityEditor;
+#endif
 
 namespace Unity.RuntimeSceneSerialization
 {
@@ -38,8 +41,7 @@ namespace Unity.RuntimeSceneSerialization
                 if (asset == null)
                     return k_InvalidId;
 
-                long fileId;
-                if (m_AssetToFileIdMap.TryGetValue(asset, out fileId))
+                if (m_AssetToFileIdMap.TryGetValue(asset, out var fileId))
                     return fileId;
 
                 if (!TryGetGUIDAndLocalFileIdentifier(asset, out _, out fileId, warnIfMissing))
@@ -67,14 +69,12 @@ namespace Unity.RuntimeSceneSerialization
                 if (asset == null)
                     return k_InvalidId;
 
-                long fileId;
-                return m_AssetToFileIdMap.TryGetValue(asset, out fileId) ? fileId : k_InvalidId;
+                return m_AssetToFileIdMap.TryGetValue(asset, out var fileId) ? fileId : k_InvalidId;
             }
 
             public UnityObject GetAsset(long fileId)
             {
-                UnityObject asset;
-                return m_FileIdToAssetMap.TryGetValue(fileId, out asset) ? asset : null;
+                return m_FileIdToAssetMap.TryGetValue(fileId, out var asset) ? asset : null;
             }
 
             public void OnBeforeSerialize()
@@ -134,9 +134,9 @@ namespace Unity.RuntimeSceneSerialization
         }
 
         const int k_InvalidId = -1;
-        const string k_AssetPackFilter = "t:" + nameof(AssetPack);
 
 #if UNITY_EDITOR
+        const string k_AssetPackFilter = "t:" + nameof(AssetPack);
         static readonly Dictionary<SceneAsset, AssetPack> k_SceneToAssetPackCache = new Dictionary<SceneAsset, AssetPack>();
 #endif
 
@@ -163,8 +163,11 @@ namespace Unity.RuntimeSceneSerialization
 
         readonly Dictionary<string, Asset> m_AssetDictionary = new Dictionary<string, Asset>();
         readonly Dictionary<UnityObject, KeyValuePair<string, long>> m_AssetLookupMap = new Dictionary<UnityObject, KeyValuePair<string, long>>();
-        readonly Dictionary<UnityObject, string> m_GuidMap = new Dictionary<UnityObject, string>();
         readonly Dictionary<string, GameObject> m_PrefabDictionary = new Dictionary<string, GameObject>();
+
+#if UNITY_EDITOR
+        readonly Dictionary<UnityObject, string> m_GuidMap = new Dictionary<UnityObject, string>();
+#endif
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
         readonly List<string> k_Guids = new List<string>();
@@ -216,8 +219,7 @@ namespace Unity.RuntimeSceneSerialization
         /// might be a scene object and metadata doesn't exist)</param>
         public void GetAssetMetadata(UnityObject obj, out string guid, out long fileId, bool warnIfMissing)
         {
-            KeyValuePair<string, long> assetData;
-            if (m_AssetLookupMap.TryGetValue(obj, out assetData))
+            if (m_AssetLookupMap.TryGetValue(obj, out var assetData))
             {
                 guid = assetData.Key;
                 fileId = assetData.Value;
@@ -235,6 +237,7 @@ namespace Unity.RuntimeSceneSerialization
             guid = string.Empty;
             fileId = k_InvalidId;
 
+            // ReSharper disable once CommentTypo
             // Suppress warning for DontSave objects
             if ((obj.hideFlags & HideFlags.DontSave) == HideFlags.None && warnIfMissing)
                 Debug.LogWarning($"Could not find asset metadata for {obj}");
@@ -309,6 +312,7 @@ namespace Unity.RuntimeSceneSerialization
         {
             if (!AssetDatabase.TryGetGUIDAndLocalFileIdentifier(obj, out guid, out fileId))
             {
+                // ReSharper disable once CommentTypo
                 // Check if target object is marked as "DontSave"--that means it is a scene object but won't be found in metadata
                 // Otherwise, this is an error, and we cannot find a valid asset path
                 // Suppress warning in certain edge cases (i.e. during deserialization before scene object metadata is set up)
@@ -381,12 +385,6 @@ namespace Unity.RuntimeSceneSerialization
         /// <returns></returns>
         public UnityObject GetAsset(string guid, long fileId)
         {
-            if (fileId < 0)
-            {
-                Debug.LogErrorFormat("Invalid index {0}", fileId);
-                return null;
-            }
-
             if (!m_AssetDictionary.TryGetValue(guid, out var asset))
             {
 #if UNITY_EDITOR

@@ -25,7 +25,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
         }
 
 #pragma warning disable 618
-
         // Reference property getters and setters needed for serialization that may get stripped on AOT
         public static void Unused(Animator animator)
         {

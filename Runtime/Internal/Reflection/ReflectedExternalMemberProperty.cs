@@ -63,7 +63,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         /// <param name="externalContainerType">The external type which should be wrapped, if any</param>
         // ReSharper disable once UnusedMember.Global
         public ReflectedExternalMemberProperty(FieldInfo info, string name, string externalContainerType)
-            : this(new Unity.Properties.FieldMember(info), name, externalContainerType) { }
+            : this(new FieldMember(info, name), name, externalContainerType) { }
 
         /// <summary>
         /// Initializes a new <see cref="ReflectedMemberProperty{TContainer,TValue}"/> instance for the specified <see cref="PropertyInfo"/>.
@@ -73,7 +73,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         /// <param name="externalContainerType">The external type which should be wrapped, if any</param>
         // ReSharper disable once UnusedMember.Global
         public ReflectedExternalMemberProperty(PropertyInfo info, string name, string externalContainerType)
-            : this(new Unity.Properties.PropertyMember(info), name, externalContainerType) { }
+            : this(new PropertyMember(info, name), name, externalContainerType) { }
 
         /// <summary>
         /// Initializes a new <see cref="ReflectedMemberProperty{TContainer,TValue}"/> instance. This is an internal constructor.

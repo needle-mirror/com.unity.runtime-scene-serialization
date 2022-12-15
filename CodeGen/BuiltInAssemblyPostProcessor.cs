@@ -5,16 +5,10 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
-using System.Reflection;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
-using Unity.Properties.CodeGen;
-using Unity.Properties.CodeGen.Blocks;
+using Unity.RuntimeSceneSerialization.CodeGen.Blocks;
 using Unity.RuntimeSceneSerialization.Internal;
-using Unity.XRTools.Utils;
 using UnityEditor;
-using UnityEngine;
-using Assembly = System.Reflection.Assembly;
-using MethodImplAttributes = System.Reflection.MethodImplAttributes;
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
@@ -24,24 +18,40 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
     [InitializeOnLoad]
     class BuiltInAssemblyPostProcessor : ILPostProcessor
     {
-        static readonly Type k_NativePropertyAttributeType = ReflectionUtils.FindType(type => type.Name == "NativePropertyAttribute");
-        static readonly Type k_NativeNameAttributeType = ReflectionUtils.FindType(type => type.Name == "NativeNameAttribute");
-        static readonly Type k_IgnoreAttributeType = ReflectionUtils.FindType(type => type.Name == "IgnoreAttribute");
+        class BuiltInAssemblyResolver : IAssemblyResolver
+        {
+            public readonly Dictionary<string, AssemblyDefinition> Assemblies = new ();
+            public void Dispose() {}
+
+            public AssemblyDefinition Resolve(AssemblyNameReference name)
+            {
+                return Assemblies.TryGetValue(name.Name, out var assemblyDefinition) ? assemblyDefinition : null;
+            }
+
+            public AssemblyDefinition Resolve(AssemblyNameReference name, ReaderParameters parameters)
+            {
+                return Assemblies.TryGetValue(name.Name, out var assemblyDefinition) ? assemblyDefinition : null;
+            }
+        }
+        const string k_NativePropertyAttributeType = "NativePropertyAttribute";
+        const string k_NativeNameAttributeType = "NativeNameAttribute";
+        const string k_SerializableAttributeType = "SerializableAttribute";
+        const string k_IgnoreAttributeType = "IgnoreAttribute";
 
         static string s_EditorAssemblyLocation;
 
-        static readonly HashSet<Type> k_IgnoredTypes = new HashSet<Type>
+        static readonly HashSet<string> k_IgnoredTypes = new()
         {
-            typeof(AnimationCurve),
-            typeof(Keyframe),
-            typeof(Vector2Int),
-            typeof(Vector3Int),
-            typeof(Rect),
-            typeof(RectInt),
-            typeof(BoundsInt)
+            "AnimationCurve",
+            "Keyframe",
+            "Vector2Int",
+            "Vector3Int",
+            "Rect",
+            "RectInt",
+            "BoundsIn"
         };
 
-        static readonly HashSet<string> k_PreCompiledAssemblies = new HashSet<string>();
+        static readonly HashSet<string> k_PreCompiledAssemblies = new();
 
         static BuiltInAssemblyPostProcessor()
         {
@@ -128,9 +138,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!ShouldProcess(compiledAssembly))
                 return null;
 
-#if UNITY_2020_1_OR_NEWER
             CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
-#endif
 
             using var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly);
             return GeneratePropertyBags(assemblyDefinition, compiledAssembly.Defines);
@@ -140,14 +148,15 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         {
             var module = compiledAssembly.MainModule;
             var context = new Context(module, defines);
-            var fields = new List<FieldInfo>();
-            var properties = new List<PropertyInfo>();
-            var serializableContainerTypes = new HashSet<Type>();
+            var fields = new List<FieldDefinition>();
+            var properties = new List<PropertyDefinition>();
+            var serializableContainerTypes = new HashSet<TypeDefinition>();
             var assemblyInclusions = RuntimeSerializationSettingsUtils.GetAssemblyInclusions();
             var namespaceExceptions = RuntimeSerializationSettingsUtils.GetNamespaceExceptions();
             var typeExceptions = RuntimeSerializationSettingsUtils.GetTypeExceptions();
 
-            var assemblies = new Dictionary<string, Assembly>();
+            var assemblyResolver = new BuiltInAssemblyResolver();
+            var assemblies = assemblyResolver.Assemblies;
             var assemblyPaths = new HashSet<string>();
             assemblyPaths.UnionWith(k_PreCompiledAssemblies);
             assemblyPaths.UnionWith(Directory.GetFiles(s_EditorAssemblyLocation, "*.dll", SearchOption.AllDirectories));
@@ -155,12 +164,14 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             {
                 try
                 {
-                    var assembly = Assembly.LoadFrom(path);
-                    assemblies[assembly.GetName().Name] = assembly;
+                    var assembly = AssemblyDefinition.ReadAssembly(path, new ReaderParameters { AssemblyResolver = assemblyResolver });
+                    assemblies[assembly.Name.Name] = assembly;
                 }
-                catch
+                catch (Exception e)
                 {
-                    // Skip assemblies that are already loaded
+                    Console.WriteLine($"Exception loading assembly at path {path}:");
+                    Console.WriteLine(e.Message);
+                    Console.WriteLine(e.StackTrace);
                 }
             }
 
@@ -169,21 +180,19 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 var assembly = kvp.Value;
                 try
                 {
-                    if (assembly.IsDynamic)
-                        continue;
-
-                    if (!assemblyInclusions.Contains(kvp.Key))
+                    var assemblyName = assembly.Name.Name;
+                    if (!assemblyInclusions.Contains(assemblyName))
                         continue;
 
                     PostProcessAssembly(namespaceExceptions, typeExceptions, assembly, fields, properties, serializableContainerTypes);
                 }
-                catch
+                catch (Exception e)
                 {
-                    // ignored
+                    Console.WriteLine($"Exception processing assembly {kvp.Key}:");
+                    Console.WriteLine(e.Message);
+                    Console.WriteLine(e.StackTrace);
                 }
             }
-
-            serializableContainerTypes.ExceptWith(k_IgnoredTypes);
 
             if (serializableContainerTypes.Count == 0)
                 return null;
@@ -193,21 +202,16 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return CreatePostProcessResult(compiledAssembly);
         }
 
-        static void GeneratePropertyBagsForSerializableTypes(Context context, HashSet<Type> serializableContainerTypes)
+        static void GeneratePropertyBagsForSerializableTypes(Context context, HashSet<TypeDefinition> serializableContainerTypes)
         {
             var module = context.Module;
-            var createValueMethod = module.ImportReference(UnityObjectReference.CreateValueMethod);
-            var createArrayMethod = module.ImportReference(UnityObjectReference.CreateArrayMethod);
-            var createListMethod = module.ImportReference(UnityObjectReference.CreateListMethod);
-            var unityObjectPropertyType = context.ImportReference(typeof(UnityObjectReference));
-            var unityObjectPropertyListType = context.ImportReference(typeof(List<UnityObjectReference>));
-
             var propertyBagDefinitions = new List<Tuple<TypeDefinition, TypeReference>>();
             foreach (var type in serializableContainerTypes)
             {
                 Console.WriteLine($"GENERATE FOR {type}");
                 var containerType = context.ImportReference(type);
-                var propertyBagType = GeneratePropertyBag(context, containerType, createValueMethod, createArrayMethod, createListMethod, unityObjectPropertyType, unityObjectPropertyListType);
+                var propertyBagType = GeneratePropertyBag(context, containerType);
+
                 module.Types.Add(propertyBagType);
                 propertyBagDefinitions.Add(new Tuple<TypeDefinition, TypeReference>(propertyBagType, containerType));
             }
@@ -216,46 +220,14 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             module.Types.Add(propertyBagRegistryTypeDefinition);
         }
 
-        static TypeDefinition GeneratePropertyBag(Context context, TypeReference containerType, MethodReference createValueMethod, MethodReference createArrayMethod, MethodReference createListMethod, TypeReference unityObjectReference, TypeReference unityObjectListReference)
+        static TypeDefinition GeneratePropertyBag(Context context, TypeReference containerType)
         {
             var propertyBagType = PropertyBag.GeneratePropertyBagHeader(context, containerType, out var ctorMethod, out var addPropertyMethod);
             var ctorMethodBody = ctorMethod.Body;
             var il = ctorMethodBody.GetILProcessor();
             var baseCtorCall = ctorMethodBody.Instructions.Last();
-            var instructions = ctorMethodBody.Instructions;
-            var startMethod = il.Create(OpCodes.Nop);
-            il.Append(startMethod);
-            var lastInstruction = startMethod;
-            var exceptionType = context.Module.ImportReference(typeof (Exception));
             foreach (var (member, nameOverride) in CodeGenUtils.GetPropertyMembers(containerType.Resolve()))
             {
-                if (CodeGenUtils.TryGenerateUnityObjectProperty(context, containerType, null, member, il, addPropertyMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference))
-                {
-                    var last = instructions.Last();
-                    var endCatch = il.Create(OpCodes.Nop);
-                    il.InsertAfter(last, endCatch);
-
-                    var leaveTry = il.Create (OpCodes.Leave, endCatch);
-                    var startCatch = il.Create(OpCodes.Nop);
-                    var leaveCatch = il.Create (OpCodes.Leave, endCatch);
-
-                    il.InsertAfter(last, leaveTry);
-                    il.InsertAfter(leaveTry, startCatch);
-                    il.InsertAfter (startCatch, leaveCatch);
-
-                    var handler = new ExceptionHandler (ExceptionHandlerType.Catch) {
-                        TryStart = lastInstruction,
-                        TryEnd = startCatch,
-                        HandlerStart = startCatch,
-                        HandlerEnd = endCatch,
-                        CatchType = exceptionType
-                    };
-
-                    ctorMethodBody.ExceptionHandlers.Add (handler);
-                    lastInstruction = endCatch;
-                    continue;
-                }
-
                 var memberType = context.ImportReference(Utility.GetMemberType(member).ResolveGenericParameter(containerType));
 
                 if (memberType.IsGenericInstance || memberType.IsArray)
@@ -284,9 +256,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 il.Emit(OpCodes.Ldarg_0); // this
                 il.Emit(OpCodes.Newobj, propertyType.GetConstructors().First());
                 il.Emit(OpCodes.Call, context.Module.ImportReference(addPropertyMethod.MakeGenericInstanceMethod(memberType)));
-                var buffer = il.Create(OpCodes.Nop);
-                il.Append(buffer);
-                lastInstruction = buffer;
             }
 
             il.Emit(OpCodes.Ret);
@@ -296,18 +265,27 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return propertyBagType;
         }
 
-        static void PostProcessAssembly(HashSet<string> namespaceExceptions, HashSet<string> typeExceptions, Assembly assembly,
-            List<FieldInfo> fields, List<PropertyInfo> properties, HashSet<Type> serializableContainerTypes)
+        static void PostProcessAssembly(HashSet<string> namespaceExceptions, HashSet<string> typeExceptions, AssemblyDefinition assembly,
+            List<FieldDefinition> fields, List<PropertyDefinition> properties, HashSet<TypeDefinition> serializableContainerTypes)
         {
-            foreach (var type in assembly.ExportedTypes)
+            if (assembly.MainModule == null)
+            {
+                Console.WriteLine($"Error processing assembly {assembly.Name?.Name}. MainModule was null.");
+                return;
+            }
+
+            foreach (var type in assembly.MainModule.Types)
             {
                 if (type.IsAbstract || type.IsInterface)
                     continue;
 
-                if (type.IsGenericType)
+                if (type.HasGenericParameters && !type.IsGenericInstance)
                     continue;
 
-                if (!typeof(Component).IsAssignableFrom(type) && !CodeGenUtils.IsSerializableContainer(type))
+                if (k_IgnoredTypes.Contains(type.Name))
+                    continue;
+
+                if (!CodeGenUtils.IsAssignableToComponent(type) && !CodeGenUtils.IsSerializableContainer(type))
                     continue;
 
                 var typeName = type.FullName;
@@ -340,14 +318,18 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 serializableContainerTypes.Add(type);
 
                 fields.Clear();
-                type.GetFieldsRecursively(fields, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                type.GetFieldsRecursively(fields);
                 foreach (var field in fields)
                 {
+                    // Static fields should not be serialized
+                    if (field.IsStatic)
+                        continue;
+
                     PostProcessField(field, includedProperties, ignoredProperties, serializableContainerTypes);
                 }
 
                 properties.Clear();
-                type.GetPropertiesRecursively(properties, BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic);
+                type.GetPropertiesRecursively(properties);
                 foreach (var property in properties)
                 {
                     PostProcessProperty(property, includedProperties, ignoredProperties, serializableContainerTypes);
@@ -355,7 +337,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             }
         }
 
-        static void PostProcessField(FieldInfo field, HashSet<string> includedProperties, HashSet<string> ignoredProperties, HashSet<Type> serializableContainerTypes)
+        static void PostProcessField(FieldDefinition field, HashSet<string> includedProperties, HashSet<string> ignoredProperties, HashSet<TypeDefinition> serializableContainerTypes)
         {
             var fieldType = field.FieldType;
             if (serializableContainerTypes.Contains(fieldType))
@@ -371,13 +353,13 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (!field.IsPublic)
                 {
                     var isValidField = false;
-                    foreach (var attribute in field.GetCustomAttributes())
+                    foreach (var attribute in field.CustomAttributes)
                     {
-                        var attributeType = attribute.GetType();
-                        if (attributeType == k_NativeNameAttributeType || attributeType == typeof(SerializableAttribute))
+                        var attributeTypeName = attribute.GetType().Name;
+                        if (attributeTypeName == k_NativeNameAttributeType || attributeTypeName == k_SerializableAttributeType)
                             isValidField = true;
 
-                        if (attributeType == k_IgnoreAttributeType)
+                        if (attributeTypeName == k_IgnoreAttributeType)
                         {
                             isValidField = false;
                             break;
@@ -391,19 +373,26 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             if (fieldType.IsArray)
                 fieldType = fieldType.GetElementType();
-            else if (ReflectedPropertyBagUtils.IsListType(fieldType))
-                fieldType = fieldType.GenericTypeArguments[0];
+            else if (CodeGenUtils.IsListType(fieldType, out var genericInstance))
+                fieldType = genericInstance as TypeReference;
 
-            if (fieldType == null || fieldType.IsGenericParameter || fieldType.IsGenericType)
+            if (fieldType == null || fieldType.IsGenericParameter || !fieldType.IsGenericInstance)
                 return;
 
-            if (!CodeGenUtils.IsSerializableContainer(fieldType))
+            var fieldTypeDefinition = fieldType.Resolve();
+            if (fieldTypeDefinition == null)
+            {
+                Console.WriteLine($"Error processing field {fieldName} in {field.DeclaringType}. Failed to resolve type {fieldType}");
+                return;
+            }
+
+            if (!CodeGenUtils.IsSerializableContainer(fieldTypeDefinition))
                 return;
 
-            serializableContainerTypes.Add(fieldType);
+            serializableContainerTypes.Add(fieldTypeDefinition);
         }
 
-        static void PostProcessProperty(PropertyInfo property, HashSet<string> includedProperties, HashSet<string> ignoredProperties, HashSet<Type> serializableContainerTypes)
+        static void PostProcessProperty(PropertyDefinition property, HashSet<string> includedProperties, HashSet<string> ignoredProperties, HashSet<TypeDefinition> serializableContainerTypes)
         {
             var propertyType = property.PropertyType;
             if (serializableContainerTypes.Contains(propertyType))
@@ -416,24 +405,24 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (ignoredProperties != null && ignoredProperties.Contains(propertyName))
                     return;
 
-                if (property.GetGetMethod(true) == null)
+                if (property.GetMethod != null)
                     return;
 
-                var setMethod = property.GetSetMethod(true);
+                var setMethod = property.SetMethod;
                 if (setMethod == null)
                     return;
 
                 var isValidProperty = false;
                 foreach (var attribute in property.CustomAttributes)
                 {
-                    var attributeType = attribute.AttributeType;
-                    if (attributeType == k_NativePropertyAttributeType)
+                    var attributeTypeName = attribute.AttributeType.Name;
+                    if (attributeTypeName == k_NativePropertyAttributeType)
                     {
                         isValidProperty = true;
                         break;
                     }
 
-                    if (attributeType == k_NativeNameAttributeType)
+                    if (attributeTypeName == k_NativeNameAttributeType)
                     {
                         isValidProperty = true;
                         break;
@@ -441,7 +430,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 }
 
                 // ReSharper disable once BitwiseOperatorOnEnumWithoutFlags
-                if ((setMethod.MethodImplementationFlags & MethodImplAttributes.InternalCall) != 0)
+                if ((setMethod.ImplAttributes & MethodImplAttributes.InternalCall) != 0)
                     isValidProperty = true;
 
                 if (!isValidProperty)
@@ -450,13 +439,26 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             if (propertyType.IsArray)
                 propertyType = propertyType.GetElementType();
-            else if (ReflectedPropertyBagUtils.IsListType(propertyType))
-                propertyType = propertyType.GenericTypeArguments[0];
+            else if (CodeGenUtils.IsListType(propertyType, out var genericInstance))
+                propertyType = genericInstance as TypeReference;
 
-            if (!CodeGenUtils.IsSerializableContainer(propertyType))
+            if (propertyType == null)
+            {
+                Console.WriteLine($"Error processing property {propertyName} in {property.DeclaringType}. Type was null.");
+                return;
+            }
+
+            var propertyTypeDefinition = propertyType.Resolve();
+            if (propertyTypeDefinition == null)
+            {
+                Console.WriteLine($"Error processing property {propertyName} in {property.DeclaringType}. Failed to resolve type {propertyType}.");
+                return;
+            }
+
+            if (!CodeGenUtils.IsSerializableContainer(propertyTypeDefinition))
                 return;
 
-            serializableContainerTypes.Add(propertyType);
+            serializableContainerTypes.Add(propertyTypeDefinition);
         }
 
         static ILPostProcessResult CreatePostProcessResult(AssemblyDefinition assembly)

@@ -22,7 +22,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             m_List = new List<RuntimePrefabPropertyOverride>();
         }
 
-        protected internal override void ApplyOverrideToTarget(UnityObject target, SerializationMetadata metadata)
+        protected internal override void ApplyOverrideToTarget(UnityObject target)
         {
             RuntimePrefabOverridePropertyVisitor.TemporaryQuaternionIsDirty = true;
             foreach (var propertyOverride in m_List)
@@ -33,7 +33,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     continue;
                 }
 
-                propertyOverride.ApplyOverrideToTarget(target, metadata);
+                propertyOverride.ApplyOverrideToTarget(target);
             }
         }
     }

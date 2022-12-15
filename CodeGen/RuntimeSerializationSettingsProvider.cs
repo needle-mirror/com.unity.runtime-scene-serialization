@@ -2,7 +2,6 @@ using System;
 using System.Collections.Generic;
 using System.Linq;
 using System.Reflection;
-using Unity.XRTools.Utils;
 using UnityEditor;
 using UnityEngine;
 using UnityEngine.UIElements;
@@ -17,7 +16,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             public readonly string Name;
 
             bool m_Expanded;
-            readonly NamespaceGroup m_RootNamespaceGroup = new NamespaceGroup();
+            readonly NamespaceGroup m_RootNamespaceGroup = new();
             readonly Action<string, HashSet<string>> m_AddAllNamespaces;
             readonly Action<string, HashSet<string>> m_AddAllTypes;
             readonly Action<string, HashSet<string>> m_RemoveAllNamespaces;
@@ -36,7 +35,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                     if (type.IsGenericType)
                         continue;
 
-                    if (!typeof(Component).IsAssignableFrom(type) && !CodeGenUtils.IsSerializableContainer(type))
+                    if (!CodeGenUtils.IsAssignableToComponent(type) && !CodeGenUtils.IsSerializableContainer(type))
                         continue;
 
                     var typeName = type.FullName;
@@ -159,8 +158,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         class NamespaceGroup
         {
-            readonly SortedDictionary<string, NamespaceGroup> m_Children = new SortedDictionary<string, NamespaceGroup>();
-            readonly List<TypeRow> m_Types = new List<TypeRow>();
+            readonly SortedDictionary<string, NamespaceGroup> m_Children = new();
+            readonly List<TypeRow> m_Types = new();
 
             bool m_Expanded = true;
 
@@ -168,7 +167,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             public List<TypeRow> Types => m_Types;
 
             // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-            static readonly List<string> k_ToRemove = new List<string>();
+            static readonly List<string> k_ToRemove = new();
             readonly Action<string, HashSet<string>> m_AddAllTypesRecursively;
             readonly Action<string, HashSet<string>> m_AddAllNamespacesRecursively;
             readonly Action<string, HashSet<string>> m_RemoveAllNamespacesRecursively;
@@ -399,7 +398,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             CodeGenUtils.ExternalPropertyBagAssemblyName
         };
 
-        readonly List<AssemblyRow> m_AssemblyRows = new List<AssemblyRow>();
+        readonly List<AssemblyRow> m_AssemblyRows = new();
         readonly Action<string, HashSet<string>> m_ExcludeAllAssemblies;
         readonly Action<string, HashSet<string>> m_ExcludeAllNamespaces;
         readonly Action<string, HashSet<string>> m_ExcludeAllTypes;

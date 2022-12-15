@@ -1,13 +1,8 @@
 ﻿using System;
 using System.Collections.Generic;
-using System.Linq;
 using System.Reflection;
-using Unity.Mathematics;
 using Unity.Properties;
-using Unity.Properties.Internal;
 using Unity.RuntimeSceneSerialization.Prefabs;
-using Unity.Serialization;
-using Unity.Serialization.Json;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
@@ -18,15 +13,13 @@ namespace Unity.RuntimeSceneSerialization.Internal
     /// </summary>
     static class SerializationUtils
     {
-        static readonly List<DeserializationEvent> k_Events = new List<DeserializationEvent>();
-
 #if !NET_DOTS && !ENABLE_IL2CPP
         static readonly MethodInfo k_RegisterPropertyBagsForPropertiesMethod = typeof(SerializationUtils).GetMethod(nameof(RegisterPropertyBagsForProperties), BindingFlags.Static | BindingFlags.NonPublic);
-        static readonly Dictionary<Type, MethodInfo> k_RegisterPropertyBagsMethods = new Dictionary<Type, MethodInfo>();
+        static readonly Dictionary<Type, MethodInfo> k_RegisterPropertyBagsMethods = new();
 #endif
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-        static readonly List<Component> k_Components = new List<Component>();
+        static readonly List<Component> k_Components = new();
 
         internal static void SortComponentList(List<Component> components, List<(Component, bool)> sortedComponents)
         {
@@ -64,59 +57,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
             sortedComponents.Sort((a, b) => a.Item2.CompareTo(b.Item2));
         }
-
-        internal static void DeserializeScene(string jsonString, SerializationMetadata metadata, ref SceneContainer value, JsonSerializationParameters parameters = default)
-        {
-            unsafe
-            {
-                fixed (char* ptr = jsonString)
-                {
-                    using (var reader = new SerializedObjectReader(new UnsafeBuffer<char>(ptr, jsonString.Length), GetDefaultConfigurationForString(jsonString)))
-                    {
-#if !NET_DOTS && !ENABLE_IL2CPP
-                        SceneSerialization.RegisterPropertyBag(typeof(SceneContainer));
-#endif
-
-                        reader.Read(out var document);
-                        var container = new PropertyWrapper<SceneContainer>(value);
-                        k_Events.Clear();
-                        PropertyContainer.Visit(ref value,
-                            new SceneVisitor(value.SceneRootTransform, document.AsUnsafe(), k_Events, parameters, metadata),
-                            out var errorCode);
-
-                        value = container.Value;
-                        var result = CreateResult(k_Events);
-                        if (!result.DidSucceed() || errorCode != VisitErrorCode.Ok)
-                        {
-                            foreach (var @event in k_Events)
-                            {
-                                Debug.LogError(@event);
-                            }
-
-                            throw new Exception("Failed to deserialize scene");
-                        }
-                    }
-                }
-            }
-
-            metadata.OnDeserializationComplete();
-        }
-
-        internal static SerializedObjectReaderConfiguration GetDefaultConfigurationForString(string json)
-        {
-            var configuration = SerializedObjectReaderConfiguration.Default;
-
-            configuration.UseReadAsync = false;
-            configuration.ValidationType = JsonValidationType.Standard;
-            configuration.BlockBufferSize = math.max(json.Length * sizeof(char), 16);
-            configuration.TokenBufferSize = math.max(json.Length / 2, 16);
-            configuration.OutputBufferSize = math.max(json.Length * sizeof(char), 16);
-
-            return configuration;
-        }
-
-        internal static DeserializationResult CreateResult(List<DeserializationEvent> events)
-            => events.Count > 0 ? new DeserializationResult(events.ToList()) : default;
 
         internal static UnityObject GetTargetObjectWithComponentIndex(this GameObject gameObject, int index)
         {
@@ -210,10 +150,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
 
         internal static void RegisterPropertyBagsForProperties<TContainer>(IPropertyBag propertyBag)
         {
-            if (!(propertyBag is IPropertyBag<TContainer> typedPropertyBag))
+            if (!(propertyBag is PropertyBag<TContainer> typedPropertyBag))
                 return;
 
-            typedPropertyBag.Register();
+            PropertyBag.Register(typedPropertyBag);
             var containerType = typeof(TContainer);
             if (containerType.IsArray)
             {
@@ -234,10 +174,5 @@ namespace Unity.RuntimeSceneSerialization.Internal
             }
         }
 #endif
-
-        internal static bool IsContainerType<T>()
-        {
-            return RuntimeTypeInfoCache<T>.IsContainerType;
-        }
     }
 }

@@ -6,7 +6,6 @@ using System.IO;
 using System.Linq;
 using System.Runtime.CompilerServices;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
-using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
 using UnityEditor;
 using UnityEditor.Compilation;
@@ -28,9 +27,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         const string k_InvokeGenericMethodWrapper = "InvokeGenericMethodWrapper";
         const string k_CallGenericMethod = "CallGenericMethod";
         static readonly string k_SerializationUtilsTypeName = typeof(SerializationUtils).FullName;
-        static readonly HashSet<string> k_PlayerAssemblies = new HashSet<string>();
-        static readonly HashSet<string> k_PlayerWithoutTestAssemblies = new HashSet<string>();
-        static readonly HashSet<string> k_PreCompiledAssemblies = new HashSet<string>();
+        static readonly HashSet<string> k_PlayerAssemblies = new();
+        static readonly HashSet<string> k_PlayerWithoutTestAssemblies = new();
+        static readonly HashSet<string> k_PreCompiledAssemblies = new();
 
         public override ILPostProcessor GetInstance()
         {
@@ -102,9 +101,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!ShouldProcess(compiledAssembly))
                 return null;
 
-#if UNITY_2020_1_OR_NEWER
             CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
-#endif
 
             var isTestBuild = compiledAssembly.Defines.Contains("UNITY_INCLUDE_TESTS");
             using var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly, out var resolver);
@@ -140,7 +137,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 searchPaths.Add(Path.GetDirectoryName(path));
             }
 
-            foreach (var assembly in AppDomain.CurrentDomain.GetAssemblies())
+            foreach (var assembly in ReflectionUtils.GetCachedAssemblies())
             {
                 if (assembly.IsDynamic)
                     continue;

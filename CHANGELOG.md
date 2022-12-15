@@ -4,6 +4,24 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-exp.3] - 2022-12-15
+### Fixed
+- Fix an issue when deserializing missing scripts with empty arrays
+
+## [1.0.0-exp.2] - 2022-12-13
+### Fixed
+- Protect against token mismatch (null arrays) in prefab deserialization.
+- Use TryGetValue when accessing fields to fix MissingFieldException when loading some legacy JSON scenes
+
+## [1.0.0-exp.1] - 2022-11-17
+### Fixed
+- Removed check for negative fileID; it was blocking valid asset references from being serialized.
+
+### Changed
+- Minimum Editor version to 2021.3.0f1
+- Properties and Serialization dependency version to 2.0.0-exp.13
+- Use JsonSerializationAdapters to provide customized serialization features instead of custom visitors
+
 ## [0.6.2-preview] - 2022-11-17
 ### Fixed
 - Removed check for negative fileID; it was blocking valid asset references from being serialized.

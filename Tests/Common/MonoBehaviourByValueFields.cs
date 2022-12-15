@@ -49,7 +49,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
         [SerializeField]
         int m_SerializeBackingForProperty = 55;
 
-        public Vector2 vector2 = new Vector2(55.0f, 55.0f);
+        public Vector2 vector2 = new(55.0f, 55.0f);
         public long[] arrayOfLong;
 
         public SerializedStruct @struct;
@@ -87,7 +87,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             arrayOfLong = new long[] { i++, i++, i++ };
             @struct.m_DoubleInStruct = i++;
 
-            m_Structs = new List<SerializedStruct> { new SerializedStruct { m_DoubleInStruct = i++ } };
+            m_Structs = new List<SerializedStruct> { new() { m_DoubleInStruct = i++ } };
 
             m_ByValueClass = new SerializedClass();
             m_ByValueClass.ValueInPrivateStruct = i;

@@ -3,7 +3,7 @@ using Unity.Properties;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
-namespace Unity.RuntimeSceneSerialization.Tests
+namespace Unity.RuntimeSceneSerialization.Tests.Editor
 {
     class TransformCopyTests
     {
@@ -56,7 +56,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
 
             var visitor = new CopyVisitor<Transform>();
             visitor.destination = m_Target;
-            PropertyContainer.Visit(ref m_Original, visitor);
+            PropertyContainer.Accept(visitor, ref m_Original);
             Assert.AreEqual(m_Original.position, m_Target.position);
             Assert.AreEqual(m_Original.rotation, m_Target.rotation);
             Assert.AreEqual(m_Original.localScale, m_Target.localScale);

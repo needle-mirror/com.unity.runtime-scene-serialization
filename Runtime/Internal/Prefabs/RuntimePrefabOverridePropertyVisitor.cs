@@ -1,23 +1,20 @@
 using System;
 using System.Collections.Generic;
 using Unity.Properties;
-using Unity.Properties.Internal;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 {
-    abstract class RuntimePrefabOverridePropertyVisitor : UnityObjectPropertyVisitor
+    abstract class RuntimePrefabOverridePropertyVisitor
     {
         // We need to keep a quaternion around for rotation overrides, because getting and setting normalizes the quaternion
         protected static Quaternion s_TemporaryQuaternion;
         internal static bool TemporaryQuaternionIsDirty { get; set; }
-
-        protected RuntimePrefabOverridePropertyVisitor(SerializationMetadata metadata)
-            : base(metadata) { }
     }
 
-    class RuntimePrefabOverridePropertyVisitor<TOverrideValue> : RuntimePrefabOverridePropertyVisitor
+    class RuntimePrefabOverridePropertyVisitor<TOverrideValue> : RuntimePrefabOverridePropertyVisitor,
+        IPropertyBagVisitor, IPropertyVisitor, IListPropertyVisitor
     {
         internal class DefaultValueOverrideVisitor : PropertyVisitor
         {
@@ -28,9 +25,9 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     return;
 
                 value ??= CreateNewDefaultObject<TValue>();
-                PropertyContainer.Visit(ref value, this);
+                PropertyContainer.Accept(this, ref value);
 
-                if (!RuntimeTypeInfoCache<TValue>.IsContainerType)
+                if (!TypeTraits<TValue>.IsContainer)
                     value = default;
             }
         }
@@ -39,16 +36,48 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
         readonly string m_PropertyPath;
         readonly string m_FirstProperty;
 
-        public RuntimePrefabOverridePropertyVisitor(RuntimePrefabPropertyOverride<TOverrideValue> prefabOverride, string propertyPath,
-            SerializationMetadata metadata) : base(metadata)
+        public RuntimePrefabOverridePropertyVisitor(RuntimePrefabPropertyOverride<TOverrideValue> prefabOverride, string propertyPath)
         {
             m_PrefabOverride = prefabOverride;
             m_PropertyPath = propertyPath;
             m_FirstProperty = propertyPath.Split('.')[0];
         }
 
-        protected override void VisitProperty<TContainer, TValue>(Property<TContainer, TValue> property,
-            ref TContainer container, ref TValue value)
+        /// <inheritdoc/>
+        void IPropertyBagVisitor.Visit<TContainer>(IPropertyBag<TContainer> properties, ref TContainer container)
+        {
+            foreach (var property in properties.GetProperties(ref container))
+            {
+                property.Accept(this, ref container);
+            }
+        }
+
+        /// <inheritdoc/>
+        void IPropertyVisitor.Visit<TContainer, TValue>(Property<TContainer, TValue> property, ref TContainer container)
+        {
+            var value = property.GetValue(ref container);
+            if (PropertyBag.TryGetPropertyBagForValue(ref value, out var valuePropertyBag))
+            {
+                switch (valuePropertyBag)
+                {
+                    // ReSharper disable SuspiciousTypeConversion.Global
+                    case IListPropertyAccept<TValue> accept:
+                        accept.Accept(this, property, ref container, ref value);
+                        return;
+
+                    // ReSharper restore SuspiciousTypeConversion.Global
+                }
+            }
+
+            VisitProperty(property, ref value);
+
+            if (!property.IsReadOnly)
+            {
+                property.SetValue(ref container, value);
+            }
+        }
+
+        void VisitProperty<TValue>(IProperty property, ref TValue value)
         {
             if (!IsFirstProperty(property.Name))
                 return;
@@ -63,8 +92,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                         TemporaryQuaternionIsDirty = false;
                     }
 
-                    var quaternionProperty = property as Property<TContainer, Quaternion>;
-                    SetIntermediatePropertyValue(quaternionProperty, ref s_TemporaryQuaternion);
+                    SetIntermediatePropertyValue(property, ref s_TemporaryQuaternion);
                     value = (TValue)(object)s_TemporaryQuaternion;
                     return;
                 }
@@ -123,8 +151,8 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             value = (TConverted)ChangeType(m_PrefabOverride.Value, conversionType);
         }
 
-        protected override void VisitList<TContainer, TList, TElement>(Property<TContainer, TList> property,
-            ref TContainer container, ref TList value)
+        void IListPropertyVisitor.Visit<TContainer, TList, TElement>(Property<TContainer, TList> property,
+            ref TContainer container, ref TList list)
         {
             if (!IsFirstProperty(property.Name))
                 return;
@@ -168,23 +196,22 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             const int arrayTokenLength = 12;
             TArray array;
             TElement[] convertedArray;
-            var unityObjectReferenceProperty = property as IUnityObjectReferenceProperty<TContainer, TArray>;
             if (!m_PropertyPath.Contains(arrayToken))
             {
                 const string arraySizeToken = ".Array.size";
                 if (m_PropertyPath.EndsWith(arraySizeToken) && m_PrefabOverride.Value is int arraySize)
                 {
-                    array = unityObjectReferenceProperty == null
-                        ? property.GetValue(ref container)
-                        : unityObjectReferenceProperty.GetValue(ref container, m_SerializationMetadata);
-
+                    array = property.GetValue(ref container);
                     convertedArray = array as TElement[];
                     if (convertedArray == null)
                     {
                         convertedArray = new TElement[arraySize];
-                        for (var i = 0; i < arraySize; i++)
+                        if (!typeof(UnityObject).IsAssignableFrom(typeof(TElement)))
                         {
-                            convertedArray[i] = CreateNewDefaultObject<TElement>();
+                            for (var i = 0; i < arraySize; i++)
+                            {
+                                convertedArray[i] = CreateNewDefaultObject<TElement>();
+                            }
                         }
 
                         // ReSharper disable once PatternNeverMatches
@@ -207,9 +234,12 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                             else if (length < arraySize)
                             {
                                 Array.Resize(ref convertedArray, arraySize);
-                                for (var i = length; i < arraySize; i++)
+                                if (!typeof(UnityObject).IsAssignableFrom(typeof(TElement)))
                                 {
-                                    convertedArray[i] = CreateNewDefaultObject<TElement>();
+                                    for (var i = length; i < arraySize; i++)
+                                    {
+                                        convertedArray[i] = CreateNewDefaultObject<TElement>();
+                                    }
                                 }
                             }
 
@@ -241,16 +271,16 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             }
 
             var minSize = arrayIndex + 1;
-            array = unityObjectReferenceProperty == null
-                ? property.GetValue(ref container)
-                : unityObjectReferenceProperty.GetValue(ref container, m_SerializationMetadata);
-
+            array = property.GetValue(ref container);
             if (array == null)
             {
                 convertedArray = new TElement[minSize];
-                for (var i = 0; i < minSize; i++)
+                if (!typeof(UnityObject).IsAssignableFrom(typeof(TElement)))
                 {
-                    convertedArray[i] = CreateNewDefaultObject<TElement>();
+                    for (var i = 0; i < minSize; i++)
+                    {
+                        convertedArray[i] = CreateNewDefaultObject<TElement>();
+                    }
                 }
 
                 // ReSharper disable once PatternNeverMatches
@@ -275,9 +305,12 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 if (length < minSize)
                 {
                     Array.Resize(ref convertedArray, minSize);
-                    for (var i = length; i < minSize; i++)
+                    if (!typeof(UnityObject).IsAssignableFrom(typeof(TElement)))
                     {
-                        convertedArray[i] = CreateNewDefaultObject<TElement>();
+                        for (var i = length; i < minSize; i++)
+                        {
+                            convertedArray[i] = CreateNewDefaultObject<TElement>();
+                        }
                     }
 
                     // ReSharper disable once PatternNeverMatches
@@ -315,7 +348,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     }
                 }
 
-                m_PrefabOverride.SetProperty(ref element, remainder, m_SerializationMetadata);
+                m_PrefabOverride.SetProperty(ref element, remainder);
                 convertedArray[arrayIndex] = element;
             }
             else if (convertedArray is TOverrideValue[] typedArray)
@@ -350,16 +383,13 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             const int arrayTokenLength = 12;
             TList list;
             List<TElement> convertedList;
-            var unityObjectReferenceProperty = property as IUnityObjectReferenceProperty<TContainer, TList>;
+            var value = m_PrefabOverride.Value;
             if (!m_PropertyPath.Contains(arrayToken))
             {
                 const string arraySizeToken = ".Array.size";
-                if (m_PropertyPath.EndsWith(arraySizeToken) && m_PrefabOverride.Value is int arraySize)
+                if (m_PropertyPath.EndsWith(arraySizeToken) && value is int arraySize)
                 {
-                    list = unityObjectReferenceProperty == null
-                        ? property.GetValue(ref container)
-                        : unityObjectReferenceProperty.GetValue(ref container, m_SerializationMetadata);
-
+                    list = property.GetValue(ref container);
                     convertedList = list as List<TElement> ?? new List<TElement>();
                     var count = convertedList.Count;
                     if (count > arraySize)
@@ -369,18 +399,25 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     }
                     else
                     {
-                        while (convertedList.Count < arraySize)
+                        if (typeof(UnityObject).IsAssignableFrom(typeof(TElement)))
                         {
-                            convertedList.Add(CreateNewDefaultObject<TElement>());
+                            while (convertedList.Count < arraySize)
+                            {
+                                convertedList.Add(default);
+                            }
+                        }
+                        else
+                        {
+                            while (convertedList.Count < arraySize)
+                            {
+                                convertedList.Add(CreateNewDefaultObject<TElement>());
+                            }
                         }
                     }
 
                     if (convertedList is TList result)
                     {
-                        if (unityObjectReferenceProperty == null)
-                            property.SetValue(ref container, result);
-                        else
-                            unityObjectReferenceProperty.SetValue(ref container, result, m_SerializationMetadata);
+                        property.SetValue(ref container, result);
                     }
                     else
                     {
@@ -403,15 +440,22 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 return;
             }
 
-            list = unityObjectReferenceProperty == null
-                ? property.GetValue(ref container)
-                : unityObjectReferenceProperty.GetValue(ref container, m_SerializationMetadata);
-
+            list = property.GetValue(ref container);
             convertedList = list as List<TElement> ?? new List<TElement>();
             var minSize = arrayIndex + 1;
-            while (convertedList.Count < minSize)
+            if (typeof(UnityObject).IsAssignableFrom(typeof(TElement)))
             {
-                convertedList.Add(CreateNewDefaultObject<TElement>());
+                while (convertedList.Count < minSize)
+                {
+                    convertedList.Add(default);
+                }
+            }
+            else
+            {
+                while (convertedList.Count < minSize)
+                {
+                    convertedList.Add(CreateNewDefaultObject<TElement>());
+                }
             }
 
             // Strip out ]. if there is a remainder
@@ -438,17 +482,20 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     }
                 }
 
-                m_PrefabOverride.SetProperty(ref element, remainder, m_SerializationMetadata);
+                m_PrefabOverride.SetProperty(ref element, remainder);
             }
             else if (convertedList is List<TOverrideValue> typedList)
             {
-                typedList[arrayIndex] = m_PrefabOverride.Value;
+                typedList[arrayIndex] = value;
             }
             else
             {
                 try
                 {
-                    convertedList[arrayIndex] = (TElement)ChangeType(m_PrefabOverride.Value, typeof(TElement));
+                    if (value == null)
+                        convertedList[arrayIndex] = default;
+                    else
+                        convertedList[arrayIndex] = (TElement)ChangeType(value, typeof(TElement));
                 }
                 catch (Exception e)
                 {
@@ -458,10 +505,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 
             if (convertedList is TList finalResult)
             {
-                if (unityObjectReferenceProperty == null)
-                    property.SetValue(ref container, finalResult);
-                else
-                    unityObjectReferenceProperty.SetValue(ref container, finalResult, m_SerializationMetadata);
+                property.SetValue(ref container, finalResult);
             }
             else
             {
@@ -469,7 +513,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             }
         }
 
-        void SetIntermediatePropertyValue<TContainer, TValue>(Property<TContainer, TValue> property, ref TValue value)
+        void SetIntermediatePropertyValue<TValue>(IProperty property, ref TValue value)
         {
             if (value == null)
             {
@@ -493,7 +537,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             var subPath = m_PropertyPath.Substring(startIndex, m_PropertyPath.Length - startIndex);
 
             // Value will be set on property as part of normal visitation
-            m_PrefabOverride.SetProperty(ref value, subPath, m_SerializationMetadata);
+            m_PrefabOverride.SetProperty(ref value, subPath);
         }
 
         static TCreate CreateNewDefaultObject<TCreate>()
@@ -520,12 +564,12 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 
             var typedNewObject = (TCreate)newObject;
 
-            if (!RuntimeTypeInfoCache.IsContainerType(newObjectType))
+            if (!TypeTraits.IsContainer(newObjectType))
                 return typedNewObject;
 
             // Clear out default values to match behavior in Editor
             var visitor = new DefaultValueOverrideVisitor();
-            PropertyContainer.Visit(ref typedNewObject, visitor);
+            PropertyContainer.Accept(visitor, ref typedNewObject);
             return typedNewObject;
         }
 

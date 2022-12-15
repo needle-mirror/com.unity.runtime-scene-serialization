@@ -8,17 +8,13 @@ using System.Linq;
 using System.Reflection;
 using System.Runtime.CompilerServices;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
-using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
+using UnityEditor;
 using UnityEditor.Compilation;
 using UnityEngine;
 using MethodBody = Mono.Cecil.Cil.MethodBody;
 using TypeAttributes = Mono.Cecil.TypeAttributes;
 using UnityObject = UnityEngine.Object;
-
-#if UNITY_2020_1_OR_NEWER
-using UnityEditor;
-#endif
 
 namespace Unity.RuntimeSceneSerialization.CodeGen
 {
@@ -30,16 +26,16 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         internal const string ExternalPropertyBagAssemblyName = "Unity.RuntimeSceneSerialization.Generated";
         static readonly string k_SkipGenerationAttributeName = typeof(SkipGeneration).FullName;
 
-        static readonly ConcurrentDictionary<string, bool> k_ListTypes = new ConcurrentDictionary<string, bool>();
+        static readonly ConcurrentDictionary<string, bool> k_ListTypes = new();
 
-        static readonly ConcurrentDictionary<string, bool> k_SerializableContainerTypes = new ConcurrentDictionary<string, bool>();
-        static readonly ConcurrentDictionary<string, bool> k_SerializableTypes = new ConcurrentDictionary<string, bool>();
+        static readonly ConcurrentDictionary<string, bool> k_SerializableContainerTypes = new();
+        static readonly ConcurrentDictionary<string, bool> k_SerializableTypes = new();
 
-        static readonly ConcurrentDictionary<string, bool> k_KnownUnityObjectTypes = new ConcurrentDictionary<string, bool>();
-        static readonly ConcurrentDictionary<string, bool> k_KnownComponentTypes = new ConcurrentDictionary<string, bool>();
+        static readonly ConcurrentDictionary<string, bool> k_KnownUnityObjectTypes = new();
+        static readonly ConcurrentDictionary<string, bool> k_KnownComponentTypes = new();
 
-        static readonly ConcurrentDictionary<string, (bool, bool)> k_SerializableTypeAttributes = new ConcurrentDictionary<string, (bool, bool)>();
-        static readonly ConcurrentDictionary<string, (bool, bool, string)> k_SerializableFieldAttributes = new ConcurrentDictionary<string, (bool, bool, string)>();
+        static readonly ConcurrentDictionary<string, (bool, bool)> k_SerializableTypeAttributes = new();
+        static readonly ConcurrentDictionary<string, (bool, bool, string)> k_SerializableFieldAttributes = new();
 
         static readonly string k_ListTypeName = typeof(List<>).FullName;
         static readonly string k_StringTypeName = typeof(string).FullName;
@@ -48,7 +44,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static readonly string k_ComponentTypeName = typeof(Component).FullName;
         static readonly string k_GameObjectTypeName = typeof(GameObject).FullName;
         static readonly string k_CompilerGeneratedAttributeName = typeof(CompilerGeneratedAttribute).FullName;
-        static readonly string k_GameObjectContainerTypeName = typeof(GameObjectContainer).FullName;
 
         static readonly string k_SerializeFieldTypeName = typeof(SerializeField).FullName;
         const string k_NativePropertyAttributeName = "UnityEngine.Bindings.NativePropertyAttribute";
@@ -57,9 +52,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         const string k_EnableIl2CppDefine = "ENABLE_IL2CPP";
         const string k_NetDotsDefine = "NET_DOTS";
 
-#if UNITY_2020_1_OR_NEWER
         static bool s_Initialized;
-#endif
 
         internal static bool RequiresCodeGen(this ICompiledAssembly compiledAssembly)
         {
@@ -196,7 +189,39 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return isAssignable;
         }
 
-        static bool IsAssignableToComponent(TypeReference type)
+        internal static bool IsAssignableToComponent(Type type)
+        {
+            var typeName = type.FullName;
+            if (typeName == k_ComponentTypeName)
+                return true;
+
+            if (typeName == null)
+            {
+                Console.WriteLine($"Error: FullName of {type} is null");
+                return false;
+            }
+
+            if (k_KnownComponentTypes.TryGetValue(typeName, out var isAssignable))
+                return isAssignable;
+
+            var baseType = type.BaseType;
+            while (baseType != null)
+            {
+                if (baseType.FullName == k_ComponentTypeName)
+                    break;
+
+                baseType = baseType.BaseType;
+            }
+
+            isAssignable = baseType != null;
+            k_KnownComponentTypes[typeName] = isAssignable;
+            if (isAssignable)
+                k_KnownUnityObjectTypes[typeName] = true;
+
+            return isAssignable;
+        }
+
+        internal static bool IsAssignableToComponent(TypeReference type)
         {
             var typeName = type.FullName;
             if (typeName == k_ComponentTypeName)
@@ -276,7 +301,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             else if (IsListType(resolvedFieldType, out var genericInstance))
                 resolvedFieldType = genericInstance.GenericArguments[0];
 
-            if (!(resolvedFieldType.FullName == k_GameObjectContainerTypeName || IsSerializable(resolvedFieldType)))
+            if (!IsSerializable(resolvedFieldType))
                 return false;
 
             return true;
@@ -362,101 +387,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
                 type = type.BaseType.Resolve();
             }
-        }
-
-        // TODO: Name override for [NativeName] if needed
-        internal static bool TryGenerateUnityObjectProperty(Context context, TypeReference containerType, TypeDefinition externalContainer, IMemberDefinition member,
-            ILProcessor il, MethodReference addPropertyMethod, MethodReference createValueMethod, MethodReference createArrayMethod,
-            MethodReference createListMethod, TypeReference unityObjectReference, TypeReference unityObjectListReference)
-        {
-            if (null == member)
-                throw new ArgumentException(nameof(member));
-
-            var memberType = Utility.GetMemberType(member);
-            if (memberType.IsGenericParameter)
-                return false;
-
-            if (TryGenerateUnityObjectListProperty(context, containerType, externalContainer, member, il, addPropertyMethod, memberType, createListMethod, unityObjectReference, unityObjectListReference))
-                return true;
-
-            if (!IsAssignableToUnityObject(memberType))
-                return false;
-
-            il.Emit(OpCodes.Ldarg_0);
-
-            // First argument is member name
-            il.Emit(OpCodes.Ldstr, member.Name);
-
-            // Second argument is true if member is a property
-            il.Emit(member is PropertyDefinition ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-
-            // Third argument is external type container name or null if not external type
-            if (externalContainer != null)
-                il.Emit(OpCodes.Ldstr, containerType.GetAssemblyQualifiedName());
-            else
-                il.Emit(OpCodes.Ldnull);
-
-            var effectiveContainerType = externalContainer ?? containerType;
-            var module = context.Module;
-            if (memberType.IsArray)
-            {
-                var elementType = context.ImportReference(memberType.GetElementType());
-                var createPropertyInstanceMethod = createArrayMethod.MakeGenericInstanceMethod(effectiveContainerType, elementType);
-                il.Emit(OpCodes.Call, module.ImportReference(createPropertyInstanceMethod));
-                il.Emit(OpCodes.Call, module.ImportReference(addPropertyMethod.MakeGenericInstanceMethod(unityObjectListReference)));
-
-                var method = context.Module.ImportReference(context.PropertyBagRegisterListGenericMethodReference.Value.
-                    MakeGenericInstanceMethod(effectiveContainerType, unityObjectListReference, unityObjectReference));
-
-                il.Emit(OpCodes.Call, method);
-            }
-            else
-            {
-                il.Emit(OpCodes.Call, module.ImportReference(createValueMethod.MakeGenericInstanceMethod(effectiveContainerType)));
-                il.Emit(OpCodes.Call, module.ImportReference(addPropertyMethod.MakeGenericInstanceMethod(unityObjectReference)));
-            }
-
-            return true;
-        }
-
-        static bool TryGenerateUnityObjectListProperty(Context context, TypeReference containerType, TypeDefinition externalContainer, IMemberDefinition member,
-            ILProcessor il, MethodReference addPropertyMethod, TypeReference memberType, MethodReference createListProperty,
-            TypeReference unityObjectReference, TypeReference unityObjectListReference)
-        {
-            if (!(memberType is GenericInstanceType genericInstanceType))
-                return false;
-
-            if (!memberType.FullName.StartsWith(k_ListTypeName))
-                return false;
-
-            var elementType = genericInstanceType.GenericArguments[0];
-            if (!IsAssignableToUnityObject(elementType))
-                return false;
-
-            il.Emit(OpCodes.Ldarg_0);
-            il.Emit(OpCodes.Ldstr, member.Name);
-
-            // Second argument is true if member is a property
-            il.Emit(member is PropertyDefinition ? OpCodes.Ldc_I4_1 : OpCodes.Ldc_I4_0);
-
-            // Third argument is external type container name or null if not external type
-            if (externalContainer != null)
-                il.Emit(OpCodes.Ldstr, containerType.GetAssemblyQualifiedName());
-            else
-                il.Emit(OpCodes.Ldnull);
-
-            var module = context.Module;
-            elementType = context.ImportReference(elementType);
-
-            var effectiveContainerType = externalContainer ?? containerType;
-            var createPropertyInstanceMethod = createListProperty.MakeGenericInstanceMethod(effectiveContainerType, elementType);
-            il.Emit(OpCodes.Call, module.ImportReference(createPropertyInstanceMethod));
-
-            il.Emit(OpCodes.Call, module.ImportReference(addPropertyMethod.MakeGenericInstanceMethod(unityObjectListReference)));
-
-            var method = context.Module.ImportReference(context.PropertyBagRegisterListGenericMethodReference.Value.MakeGenericInstanceMethod(effectiveContainerType, unityObjectListReference, unityObjectReference));
-            il.Emit(OpCodes.Call, method);
-            return true;
         }
 
         internal static IEnumerable<TypeDefinition> PostProcessAssembly(HashSet<string> namespaceExceptions,
@@ -598,7 +528,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return attributes;
         }
 
-#if UNITY_2020_1_OR_NEWER
         [InitializeOnLoadMethod]
         static void InitializeOnLoad()
         {
@@ -637,7 +566,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 }
             }
         }
-#endif
 
         public static void PostProcessPropertyBag(Context context, MethodBody ctorMethodBody, Instruction baseCtorCall)
         {

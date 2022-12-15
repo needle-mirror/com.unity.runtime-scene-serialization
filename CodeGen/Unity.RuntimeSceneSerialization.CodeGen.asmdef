@@ -1,9 +1,9 @@
 {
     "name": "Unity.RuntimeSceneSerialization.CodeGen",
+    "rootNamespace": "",
     "references": [
         "Unity.XRTools.Utils",
         "Unity.Properties",
-        "Unity.Properties.CodeGen",
         "UnityEngine.UI",
         "Unity.RuntimeSceneSerialization",
         "Unity.RuntimeSceneSerialization.Editor"
@@ -12,7 +12,7 @@
         "Editor"
     ],
     "excludePlatforms": [],
-    "allowUnsafeCode": false,
+    "allowUnsafeCode": true,
     "overrideReferences": true,
     "precompiledReferences": [
         "Mono.Cecil.dll",

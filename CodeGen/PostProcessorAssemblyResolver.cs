@@ -14,9 +14,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
     /// </summary>
     class PostProcessorAssemblyResolver : IAssemblyResolver
     {
-        readonly HashSet<string> m_ReferenceDirectories = new HashSet<string>();
+        readonly HashSet<string> m_ReferenceDirectories = new();
         readonly Dictionary<string, HashSet<string>> m_ReferenceToPathMap;
-        readonly Dictionary<string, AssemblyDefinition> m_Cache = new Dictionary<string, AssemblyDefinition>();
+        readonly Dictionary<string, AssemblyDefinition> m_Cache = new();
         readonly ICompiledAssembly m_CompiledAssembly;
         AssemblyDefinition m_SelfAssembly;
 
@@ -49,38 +49,28 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         public AssemblyDefinition Resolve(AssemblyNameReference name, ReaderParameters parameters)
         {
-#if !UNITY_2020_2_OR_NEWER && !UNITY_DOTSRUNTIME
-            lock (m_Cache)
-#endif
-            {
-                if (name.Name == m_CompiledAssembly.Name)
-                    return m_SelfAssembly;
+            if (name.Name == m_CompiledAssembly.Name)
+                return m_SelfAssembly;
 
-                var fileName = FindFile(name);
-                if (fileName == null)
-                    return null;
+            var fileName = FindFile(name);
+            if (fileName == null)
+                return null;
 
-                var cacheKey = fileName;
-#if !UNITY_2020_2_OR_NEWER && !UNITY_DOTSRUNTIME
-                var lastWriteTime = File.GetLastWriteTime(fileName);
-                cacheKey += lastWriteTime.ToString();
-#endif
+            var cacheKey = fileName;
+            if (m_Cache.TryGetValue(cacheKey, out var result))
+                return result;
 
-                if (m_Cache.TryGetValue(cacheKey, out var result))
-                    return result;
+            parameters.AssemblyResolver = this;
 
-                parameters.AssemblyResolver = this;
+            var ms = MemoryStreamFor(fileName);
 
-                var ms = MemoryStreamFor(fileName);
+            var pdb = fileName + ".pdb";
+            if (File.Exists(pdb))
+                parameters.SymbolStream = MemoryStreamFor(pdb);
 
-                var pdb = fileName + ".pdb";
-                if (File.Exists(pdb))
-                    parameters.SymbolStream = MemoryStreamFor(pdb);
-
-                var assemblyDefinition = AssemblyDefinition.ReadAssembly(ms, parameters);
-                m_Cache.Add(cacheKey, assemblyDefinition);
-                return assemblyDefinition;
-            }
+            var assemblyDefinition = AssemblyDefinition.ReadAssembly(ms, parameters);
+            m_Cache.Add(cacheKey, assemblyDefinition);
+            return assemblyDefinition;
         }
 
         string FindFile(AssemblyNameReference name)

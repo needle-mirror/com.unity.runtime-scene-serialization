@@ -2,8 +2,6 @@
 using System.Collections;
 using System.Collections.Generic;
 using System.Reflection;
-using Unity.Properties;
-using Unity.Properties.Internal;
 using UnityEngine;
 using UnityObject = UnityEngine.Object;
 
@@ -11,33 +9,24 @@ namespace Unity.RuntimeSceneSerialization.Internal
 {
     static class ReflectedPropertyBagUtils
     {
-        static readonly Dictionary<Type, bool> k_ListTypes = new Dictionary<Type, bool>();
-        static readonly Dictionary<Type, bool> k_SerializableTypes = new Dictionary<Type, bool>();
+        static readonly Dictionary<Type, bool> k_ListTypes = new();
+        static readonly Dictionary<Type, bool> k_SerializableTypes = new();
 
-        static readonly Dictionary<Type, bool> k_KnownUnityObjectTypes = new Dictionary<Type, bool>();
+        static readonly Dictionary<Type, bool> k_KnownUnityObjectTypes = new();
 
-        static readonly Dictionary<string, (bool, bool, string)> k_SerializableFieldAttributes = new Dictionary<string, (bool, bool, string)>();
+        static readonly Dictionary<string, (bool, bool, string)> k_SerializableFieldAttributes = new();
 
         static readonly Type k_GameObjectType = typeof(GameObject);
-        static readonly Type k_GameObjectContainerType = typeof(GameObjectContainer);
         static readonly Type k_ObjectType = typeof(object);
         static readonly Type k_UnityObjectType = typeof(UnityObject);
         static readonly Type k_StringType = typeof(string);
 
-        static readonly Dictionary<string, HashSet<string>> k_IncludedProperties = new Dictionary<string, HashSet<string>>();
-        static readonly Dictionary<string, HashSet<string>> k_IgnoredProperties = new Dictionary<string, HashSet<string>>();
+        static readonly Dictionary<string, HashSet<string>> k_IncludedProperties = new();
+        static readonly Dictionary<string, HashSet<string>> k_IgnoredProperties = new();
         static readonly string k_SerializeFieldTypeName = typeof(SerializeField).FullName;
         const string k_NativePropertyAttributeName = "UnityEngine.Bindings.NativePropertyAttribute";
         const string k_NativeNameTypeName = "UnityEngine.Bindings.NativeNameAttribute";
         const string k_IgnoreTypeName = "UnityEngine.Bindings.IgnoreAttribute";
-
-        static readonly FieldInfo k_PropertyBagsField = typeof(PropertyBagStore).GetField("s_PropertyBags", BindingFlags.Static | BindingFlags.NonPublic);
-
-#if !NET_DOTS
-        static readonly System.Collections.Concurrent.ConcurrentDictionary<Type, IPropertyBag> k_PropertyBags = (System.Collections.Concurrent.ConcurrentDictionary<Type, IPropertyBag>)k_PropertyBagsField.GetValue(null);
-#else
-        static readonly Dictionary<Type, IPropertyBag> k_PropertyBags = (Dictionary<Type, IPropertyBag>)k_PropertyBagsField.GetValue(null);
-#endif
 
         internal static void SetIncludedProperties(Type type, HashSet<string> properties)
         {
@@ -159,7 +148,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
             else if (IsListType(fieldType))
                 fieldType = fieldType.GenericTypeArguments[0];
 
-            return fieldType != null && fieldType == k_GameObjectContainerType || IsSerializable(fieldType);
+            return fieldType != null && IsSerializable(fieldType);
         }
 
         static bool TestProperty(PropertyInfo propertyDefinition, Type containerType, HashSet<string> includedProperties, HashSet<string> ignoredProperties)
@@ -233,7 +222,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
             }
         }
 
-        static (bool, bool, string) GetSerializedFieldAttributes(FieldInfo fieldDefinition)
+        static (bool, bool, string) GetSerializedFieldAttributes(MemberInfo fieldDefinition)
         {
             var declaringType = fieldDefinition.DeclaringType;
             if (declaringType == null)
@@ -268,52 +257,6 @@ namespace Unity.RuntimeSceneSerialization.Internal
             attributes = (hasSerializeField, hasIgnore, nameOverride);
             k_SerializableFieldAttributes[fieldName] = attributes;
             return attributes;
-        }
-
-        internal static Property<TContainer, UnityObjectReference> TryCreateUnityObjectProperty<TContainer>(IMemberInfo member)
-        {
-            if (null == member)
-                throw new ArgumentException(nameof(member));
-
-            var memberType = member.ValueType;
-            if (memberType.IsGenericParameter)
-                return null;
-
-            if (!IsAssignableToUnityObject(memberType))
-                return null;
-
-            return new UnityObjectReferenceValueProperty<TContainer>(member, null);
-        }
-
-        internal static Property<TContainer, List<UnityObjectReference>> TryCreateUnityObjectListProperty<TContainer, TElement>(IMemberInfo member)
-        {
-            var memberType = member.ValueType;
-            if (!IsListType(memberType))
-                return null;
-
-            var elementType = memberType.GenericTypeArguments[0];
-            if (!IsAssignableToUnityObject(elementType))
-                return null;
-
-            return new UnityObjectReferenceListProperty<TContainer, TElement>(member, null);
-        }
-
-        internal static Property<TContainer, List<UnityObjectReference>> TryCreateUnityObjectArrayProperty<TContainer, TElement>(IMemberInfo member)
-        {
-            var memberType = member.ValueType;
-            if (!memberType.IsArray)
-                return null;
-
-            var elementType = memberType.GetElementType();
-            if (!IsAssignableToUnityObject(elementType))
-                return null;
-
-            return new UnityObjectReferenceArrayProperty<TContainer, TElement>(member, null);
-        }
-
-        internal static bool PropertyBagExists(Type type)
-        {
-            return k_PropertyBags.ContainsKey(type);
         }
     }
 }

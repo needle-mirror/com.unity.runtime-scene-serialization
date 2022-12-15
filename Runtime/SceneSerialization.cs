@@ -1,15 +1,14 @@
 ﻿using System;
+using System.Collections;
 using System.Collections.Generic;
-using Unity.Collections;
 using Unity.Properties;
-using Unity.Properties.Internal;
 using Unity.RuntimeSceneSerialization.Internal;
-using Unity.Serialization;
+using Unity.RuntimeSceneSerialization.Json.Adapters;
 using Unity.Serialization.Json;
-using Unity.XRTools.Utils;
 using UnityEngine;
 using UnityEngine.SceneManagement;
-using EventType = Unity.Serialization.Json.EventType;
+using JsonAdapter = Unity.RuntimeSceneSerialization.Json.Adapters.JsonAdapter;
+using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization
 {
@@ -18,24 +17,52 @@ namespace Unity.RuntimeSceneSerialization
     /// </summary>
     public static class SceneSerialization
     {
+        class CollectionInitializationVisitor : PropertyVisitor
+        {
+            protected override void VisitProperty<TContainer, TValue>(Property<TContainer, TValue> property, ref TContainer container, ref TValue value)
+            {
+                if (value != null)
+                {
+                    if (!typeof(UnityObject).IsAssignableFrom(typeof(TValue)) && TypeTraits<TValue>.IsContainer)
+                        PropertyContainer.Accept(this, ref value);
+
+                    return;
+                }
+
+                var valueType = typeof(TValue);
+                if (valueType.IsArray)
+                {
+                    var elementType = valueType.GetElementType();
+                    if (elementType == null)
+                        return;
+
+                    value = (TValue)(object)Array.CreateInstance(elementType, 0);
+                    return;
+                }
+
+                if (valueType == typeof(string))
+                {
+                    value = (TValue) (object) string.Empty;
+                    return;
+                }
+
+                if (!typeof(IList).IsAssignableFrom(valueType))
+                    return;
+
+                value = Activator.CreateInstance<TValue>();
+            }
+        }
+
+
 #if !NET_DOTS && !ENABLE_IL2CPP
         static readonly object[] k_RegisterPropertyBagsArguments = new object[1];
+        static readonly Dictionary<Type, IPropertyBag> k_PropertyBags = new();
 #endif
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-        static readonly List<GameObject> k_Roots = new List<GameObject>();
-        static readonly List<DeserializationEvent> k_Events = new List<DeserializationEvent>();
-
-        static readonly HashSet<Type> k_IgnoredTypes = new HashSet<Type>
-        {
-            typeof(AnimationCurve),
-            typeof(Keyframe),
-            typeof(Vector2Int),
-            typeof(Vector3Int),
-            typeof(Rect),
-            typeof(RectInt),
-            typeof(BoundsInt)
-        };
+        static readonly List<GameObject> k_Roots = new();
+        static readonly List<GameObject> k_SavedRoots = new();
+        static readonly List<Component> k_Components = new();
 
         /// <summary>
         /// Load a scene from JSON into the active scene
@@ -47,19 +74,70 @@ namespace Unity.RuntimeSceneSerialization
         public static SerializationMetadata ImportScene(string json, AssetPack assetPack = null,
             Action<List<GameObject>> onAfterDeserialize = null)
         {
-            var metadata = new SerializationMetadata(assetPack);
-            var renderSettings = new SerializedRenderSettings();
-            renderSettings.UpdateValuesFromRenderSettings();
-            var container = new SceneContainer(SceneManager.GetActiveScene(), metadata, renderSettings, false);
-            var sceneRoot = new GameObject();
-            var sceneRootTransform = sceneRoot.transform;
-            container.SceneRootTransform = sceneRootTransform;
+            var sceneRoot = new GameObject("Temp scene root");
+            var tempSceneRoot = sceneRoot.transform;
 
             // Set root inactive so that we can activate everything at once
             sceneRoot.SetActive(false);
+
+            var metadata = new SerializationMetadata(assetPack);
+            var adapters = new List<IJsonAdapter>();
+            var parameters = new JsonSerializationParameters
+            {
+                DisableSerializedReferences = true,
+                UserDefinedAdapters = adapters
+            };
+
+            var adapter = new JsonAdapter(metadata, parameters, tempSceneRoot);
+            adapters.Add(adapter);
+
             try
             {
-                SerializationUtils.DeserializeScene(json, metadata, ref container);
+                JsonSerialization.FromJson<SerializedScene>(json, parameters);
+
+                k_Roots.Clear();
+                foreach (Transform child in tempSceneRoot)
+                {
+                    k_Roots.Add(child.gameObject);
+                }
+
+                metadata.SetupSceneObjectMetadata(k_Roots);
+
+                // Deserialize a second time to set scene references
+                var activeScene = SceneManager.GetActiveScene();
+                adapters.Add(new JsonSerializationCallbackReceiverAdapter());
+                JsonSerialization.FromJsonOverride(json, ref activeScene, parameters);
+
+                onAfterDeserialize?.Invoke(k_Roots);
+
+                foreach (var root in k_Roots)
+                {
+                    var visitor = new CollectionInitializationVisitor();
+                    root.GetComponentsInChildren(true, k_Components);
+                    var componentCount = k_Components.Count;
+                    for (var i = 0; i < componentCount; i++)
+                    {
+                        var component = k_Components[i];
+                        if (component == null)
+                            continue;
+
+#if !NET_DOTS && !ENABLE_IL2CPP
+                        // Register a runtime scene serialization property bag in case we encounter new component types in prefabs
+                        RegisterPropertyBagRecursively(component.GetType());
+#endif
+
+                        PropertyContainer.Accept(visitor, ref component);
+                    }
+
+                    // Moving this root object out of its parent will activate all newly created GameObjects
+                    root.transform.SetParent(null, false);
+                }
+
+                adapter.RenderSettings?.ApplyValuesToRenderSettings();
+                DynamicGI.UpdateEnvironment();
+
+                k_Roots.Clear();
+                SafeDestroy(sceneRoot);
             }
             catch (FormatException)
             {
@@ -68,158 +146,10 @@ namespace Unity.RuntimeSceneSerialization
             catch (Exception e)
             {
                 Debug.LogException(e);
-                container = null;
+                return default;
             }
 
-            if (container != null)
-            {
-                k_Roots.Clear();
-                foreach (Transform child in sceneRootTransform)
-                {
-                    k_Roots.Add(child.gameObject);
-                }
-
-                metadata.SetupSceneObjectMetadata(k_Roots);
-                metadata.DoPostSerializationActions();
-
-                onAfterDeserialize?.Invoke(k_Roots);
-
-                foreach (var root in k_Roots)
-                {
-                    // Moving this root object out of its parent will activate all newly created GameObjects
-                    root.transform.SetParent(null, false);
-                }
-
-                container.ApplyRenderSettings();
-                DynamicGI.UpdateEnvironment();
-            }
-
-            UnityObjectUtils.Destroy(sceneRoot);
             return metadata;
-        }
-
-        /// <summary>
-        /// Alternative method to JsonSerialization.ToJson which uses JsonSceneWriter
-        /// Use this if you need to support `ISerializationCallbacks`
-        /// </summary>
-        /// <param name="value">The value to serialize</param>
-        /// <param name="metadata">SerializationMetadata for this call</param>
-        /// <typeparam name="T">The type of the value being serialized</typeparam>
-        /// <returns>A string containing the Json serialized representation of `value`</returns>
-        public static string ToJson<T>(T value, SerializationMetadata metadata = null)
-        {
-            var parameters = new JsonSerializationParameters
-            {
-                DisableRootAdapters = true,
-                DisableSerializedReferences = true
-            };
-
-            using (var writer = new JsonWriter(parameters.InitialCapacity, Allocator.Temp))
-            {
-                var visitor = new JsonSceneWriter(metadata);
-
-                visitor.SetWriter(writer);
-                visitor.SetSerializedType(parameters.SerializedType);
-
-                if (value is GameObject gameObject)
-                {
-                    var container = new PropertyWrapper<GameObjectContainer>(new GameObjectContainer(gameObject, metadata));
-                    using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
-                }
-                else
-                {
-                    var container = new PropertyWrapper<T>(value);
-                    using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
-                }
-
-                return writer.ToString();
-            }
-        }
-
-        /// <summary>
-        /// Alternative version of JsonSerialization.FromJson which uses JsonSceneReader
-        /// </summary>
-        /// <param name="jsonString">The Json string to be deserialized</param>
-        /// <typeparam name="T">The type of value represented by the Json string</typeparam>
-        /// <returns>The deserialized value</returns>
-        /// <exception cref="Exception">Thrown if serialization failed</exception>
-        public static T FromJson<T>(string jsonString)
-        {
-            T value = default;
-            FromJsonOverride(jsonString, ref value);
-            return value;
-        }
-
-        /// <summary>
-        /// Alternative version of JsonSerialization.FromJson which uses JsonSceneReader
-        /// </summary>
-        /// <param name="jsonString">The Json string to be deserialized</param>
-        /// <param name="value">A reference of type T to use for populating the deserialized value</param>
-        /// <typeparam name="T">The type of value represented by the Json string</typeparam>
-        /// <exception cref="Exception">Thrown if serialization failed</exception>
-        public static void FromJsonOverride<T>(string jsonString, ref T value)
-        {
-            unsafe
-            {
-                fixed (char* ptr = jsonString)
-                {
-                    var configuration = SerializationUtils.GetDefaultConfigurationForString(jsonString);
-                    using (var reader = new SerializedObjectReader(new UnsafeBuffer<char>(ptr, jsonString.Length), configuration))
-                    {
-                        reader.Read(out var document);
-
-                        k_Events.Clear();
-                        if (typeof(T) == typeof(GameObject))
-                        {
-                            var gameObject = value as GameObject;
-                            if (gameObject == null)
-                                gameObject = new GameObject();
-
-                            var metadata = new SerializationMetadata();
-                            var container = new GameObjectContainer(gameObject, metadata);
-                            var visitor = new GameObjectVisitor(document.AsUnsafe(), k_Events, metadata, null, null, default);
-                            try
-                            {
-                                using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
-                            }
-                            catch (Exception e)
-                            {
-                                k_Events.Add(new DeserializationEvent(EventType.Exception, e));
-                            }
-
-                            value = (T)(object)container.GameObject;
-                        }
-                        else
-                        {
-                            var visitor = new JsonSceneReader(new SerializationMetadata());
-                            visitor.SetView(document.AsUnsafe());
-                            visitor.SetEvents(k_Events);
-                            var container = new PropertyWrapper<T>(value);
-                            try
-                            {
-                                using (visitor.Lock()) PropertyContainer.Visit(ref container, visitor);
-                            }
-                            catch (Exception e)
-                            {
-                                k_Events.Add(new DeserializationEvent(EventType.Exception, e));
-                            }
-
-                            value = container.Value;
-                        }
-
-                        var result = SerializationUtils.CreateResult(k_Events);
-                        if (!result.DidSucceed())
-                        {
-                            foreach (var @event in k_Events)
-                            {
-                                Debug.LogError(@event);
-                            }
-
-                            throw new Exception("Failed to deserialize");
-                        }
-                    }
-                }
-            }
         }
 
         /// <summary>
@@ -233,26 +163,91 @@ namespace Unity.RuntimeSceneSerialization
         public static string SerializeScene(Scene scene, SerializedRenderSettings renderSettings = default, AssetPack assetPack = null)
         {
             var metadata = new SerializationMetadata(assetPack);
-            return ToJson(new SceneContainer(scene, metadata, renderSettings), metadata);
+            k_SavedRoots.Clear();
+            SerializedScene.GetSavedRoots(scene, k_SavedRoots);
+            metadata.SetupSceneObjectMetadata(k_SavedRoots);
+            var jsonText = ToJson(new SerializedScene(k_SavedRoots, renderSettings), metadata);
+            k_SavedRoots.Clear();
+            return jsonText;
+        }
+
+        /// <summary>
+        /// Alternative version of JsonSerialization.FromJson which uses custom Json Adapters
+        /// Use this if you need to deserialize GameObjects, Components,
+        /// SerializedObjects, or types that implement `ISerializationCallbacks`
+        /// </summary>
+        /// <param name="jsonString">The Json string to be deserialized</param>
+        /// <param name="metadata">SerializationMetadata for this call</param>
+        /// <typeparam name="T">The type of value represented by the Json string</typeparam>
+        /// <returns>The deserialized value</returns>
+        /// <exception cref="Exception">Thrown if serialization failed</exception>
+        public static T FromJson<T>(string jsonString, SerializationMetadata metadata = null)
+        {
+            T value = default;
+            FromJsonOverride(jsonString, ref value);
+            return value;
+        }
+
+        /// <summary>
+        /// Alternative version of JsonSerialization.FromJson which uses custom Json Adapters
+        /// Use this if you need to deserialize GameObjects, Components,
+        /// SerializedObjects, or types that implement `ISerializationCallbacks`
+        /// </summary>
+        /// <param name="jsonString">The Json string to be deserialized</param>
+        /// /// <param name="value">A reference of type T to use for populating the deserialized value</param>
+        /// <param name="metadata">SerializationMetadata for this call</param>
+        /// <typeparam name="T">The type of value represented by the Json string</typeparam>
+        /// <returns></returns>
+        /// <exception cref="Exception">Thrown if serialization failed</exception>
+        public static void FromJsonOverride<T>(string jsonString, ref T value, SerializationMetadata metadata = null)
+        {
+#if !NET_DOTS && !ENABLE_IL2CPP
+            RegisterPropertyBagRecursively(typeof(T));
+#endif
+
+            metadata ??= new SerializationMetadata();
+            var adapters = new List<IJsonAdapter>();
+            var parameters = new JsonSerializationParameters
+            {
+                DisableSerializedReferences = true,
+                UserDefinedAdapters = adapters
+            };
+
+            adapters.Add(new JsonAdapter(metadata, parameters));
+            adapters.Add(new JsonSerializationCallbackReceiverAdapter());
+            adapters.Add(new JsonFormatVersionAdapter());
+            JsonSerialization.FromJsonOverride(jsonString, ref value, parameters);
+        }
+
+        /// <summary>
+        /// Alternative method to JsonSerialization.ToJson which uses custom Json adapters
+        /// Use this if you need to serialize GameObjects, Components,
+        /// SerializedObjects, or types that implement `ISerializationCallbacks`
+        /// </summary>
+        /// <param name="value">The value to serialize</param>
+        /// <param name="metadata">SerializationMetadata for this call</param>
+        /// <typeparam name="T">The type of the value being serialized</typeparam>
+        /// <returns>A string containing the Json serialized representation of `value`</returns>
+        public static string ToJson<T>(T value, SerializationMetadata metadata = null)
+        {
+#if !NET_DOTS && !ENABLE_IL2CPP
+            RegisterPropertyBagRecursively(typeof(T));
+#endif
+
+            metadata ??= new SerializationMetadata();
+            var adapters = new List<IJsonAdapter>();
+            var parameters = new JsonSerializationParameters
+            {
+                DisableSerializedReferences = true,
+                UserDefinedAdapters = adapters
+            };
+
+            adapters.Add(new JsonSerializationCallbackReceiverAdapter());
+            adapters.Add(new JsonAdapter(metadata, parameters));
+            return JsonSerialization.ToJson(value, parameters);
         }
 
 #if !NET_DOTS && !ENABLE_IL2CPP
-        /// <summary>
-        /// Register a reflected property bag which is compatible with scene serialization for the given type
-        /// </summary>
-        /// <param name="type">The type which will be represented by the property bag</param>
-        public static void RegisterPropertyBag(Type type)
-        {
-            if (ReflectedPropertyBagUtils.PropertyBagExists(type))
-                return;
-
-            if (type.IsGenericTypeDefinition || type.IsAbstract || type.IsInterface)
-                return;
-
-            var propertyBag = ReflectedPropertyBagProvider.Instance.CreatePropertyBag(type);
-            propertyBag?.Register();
-        }
-
         /// <summary>
         /// Register a reflected property bag which is compatible with scene serialization for the given type and the
         /// types of its properties, and their properties recursively
@@ -260,23 +255,42 @@ namespace Unity.RuntimeSceneSerialization
         /// <param name="type">The type which will used to create the property bags</param>
         public static void RegisterPropertyBagRecursively(Type type)
         {
-            if (!RuntimeTypeInfoCache.IsContainerType(type) || type.IsGenericTypeDefinition || type.IsAbstract || type.IsInterface)
+            if (type == typeof(object))
                 return;
 
-            // Do not override default property bags from properties package
-            if (k_IgnoredTypes.Contains(type))
+            if (!TypeTraits.IsContainer(type) || type.IsGenericTypeDefinition || type.IsAbstract || type.IsInterface)
+                return;
+
+            if (PropertyBag.Exists(type))
+                return;
+
+            if (k_PropertyBags.ContainsKey(type))
                 return;
 
             var propertyBag = ReflectedPropertyBagProvider.Instance.CreatePropertyBag(type);
+            k_PropertyBags.Add(type, propertyBag);
+
             if (propertyBag == null)
                 return;
-
-            propertyBag.Register();
 
             var method = SerializationUtils.GetRegisterPropertyBagsForPropertiesMethod(type);
             k_RegisterPropertyBagsArguments[0] = propertyBag;
             method?.Invoke(null, k_RegisterPropertyBagsArguments);
         }
 #endif
+
+        static void SafeDestroy(UnityObject obj)
+        {
+            if (Application.isPlaying)
+            {
+                UnityObject.Destroy(obj);
+            }
+#if UNITY_EDITOR
+            else
+            {
+                UnityObject.DestroyImmediate(obj);
+            }
+#endif
+        }
     }
 }

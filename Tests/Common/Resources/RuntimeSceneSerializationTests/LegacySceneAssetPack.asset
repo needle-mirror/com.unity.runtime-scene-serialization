@@ -1,0 +1,29 @@
+%YAML 1.1
+%TAG !u! tag:unity3d.com,2011:
+--- !u!114 &11400000
+MonoBehaviour:
+  m_ObjectHideFlags: 0
+  m_CorrespondingSourceObject: {fileID: 0}
+  m_PrefabInstance: {fileID: 0}
+  m_PrefabAsset: {fileID: 0}
+  m_GameObject: {fileID: 0}
+  m_Enabled: 1
+  m_EditorHideFlags: 0
+  m_Script: {fileID: 11500000, guid: 318a9aecae3fb8e49816f2c92f5e81b2, type: 3}
+  m_Name: LegacySceneAssetPack
+  m_EditorClassIdentifier: 
+  m_SceneAsset: {fileID: 102900000, guid: 9fc0d4010bbf28b4594072e72b8655ab, type: 3}
+  m_Guids:
+  - 0000000000000000e000000000000000
+  - 0000000000000000f000000000000000
+  m_Assets:
+  - m_FileIds: da27000000000000
+    m_Assets:
+    - {fileID: 10202, guid: 0000000000000000e000000000000000, type: 0}
+  - m_FileIds: 3f28000000000000
+    m_Assets:
+    - {fileID: 10303, guid: 0000000000000000f000000000000000, type: 0}
+  m_PrefabGuids:
+  - 091659965a98e4d10bde2c70a91bb95f
+  m_Prefabs:
+  - {fileID: 999420897182360135, guid: 091659965a98e4d10bde2c70a91bb95f, type: 3}

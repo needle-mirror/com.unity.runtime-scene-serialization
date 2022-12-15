@@ -21,7 +21,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             public int m_data;
 
             [SerializeReference]
-            public List<Node> m_nodes = new List<Node>();
+            public List<Node> m_nodes = new();
 
             [SerializeReference]
             public Node m_BackPointer;
@@ -33,11 +33,9 @@ namespace Unity.RuntimeSceneSerialization.Tests
         [SerializeField]
         Node m_Root;
 
-#if UNITY_2019_4_OR_NEWER
         [SerializeReference]
         // ReSharper disable once MemberCanBePrivate.Global
         public object polymorphic;
-#endif
 
         public void SetKnownState()
         {
@@ -56,9 +54,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             m_Root.m_nodes[0].m_nodes.Add(new Node { m_data = i++, m_BackPointer = backPointer});
             m_Root.m_nodes[1].m_nodes.Add(new Node { m_data = i++, m_BackPointer = backPointer});
 
-#if UNITY_2019_4_OR_NEWER
             polymorphic = new Node { m_data = i };
-#endif
         }
 
         public void TestKnownState()
@@ -70,9 +66,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.AreEqual(i++, m_Root.m_nodes[0].m_nodes[0].m_data);
             Assert.AreEqual(i++, m_Root.m_nodes[1].m_nodes[0].m_data);
 
-#if UNITY_2019_4_OR_NEWER
             Assert.AreEqual(i, ((Node)polymorphic).m_data);
-#endif
 
             // With SerializeReference Null is supported
             Assert.IsNull(m_Root.m_BackPointer);

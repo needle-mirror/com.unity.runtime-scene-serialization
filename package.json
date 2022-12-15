@@ -1,14 +1,14 @@
 {
   "name": "com.unity.runtime-scene-serialization",
   "displayName": "Unity Runtime Scene Serialization",
-  "version": "0.6.2-preview",
-  "unity": "2020.3",
-  "unityRelease": "17f1",
+  "version": "1.0.0-exp.3",
+  "unity": "2021.3",
+  "unityRelease": "0f1",
   "description": "Serialize and deserialize a Unity scene and its GameObjects and Components using a JSON format",
   "dependencies": {
-    "com.unity.properties": "1.8.3-preview",
-    "com.unity.serialization": "1.8.3-preview",
-    "com.unity.xrtools.utils": "1.1.1"
+    "com.unity.properties": "2.0.0-exp.13",
+    "com.unity.serialization": "2.0.0-exp.13",
+    "com.unity.nuget.mono-cecil": "1.10.1"
   },
   "samples": [
     {
@@ -17,12 +17,16 @@
       "path": "Samples~/BasicAssetBundles"
     }
   ],
-  "upmCi": {
-    "footprint": "fd30e024a5e83c12c94bc3d1e6dc918f1a938f1a"
+  "_upm": {
+    "changelog": "### Fixed\n- Fix an issue when deserializing missing scripts with empty arrays"
   },
+  "upmCi": {
+    "footprint": "c04899320ab6f23ef30dcb3c4e7cf2a5dd099cd8"
+  },
+  "documentationUrl": "https://docs.unity3d.com/Packages/com.unity.runtime-scene-serialization@1.0/manual/index.html",
   "repository": {
     "url": "https://github.cds.internal.unity3d.com/unity/com.unity.runtime-scene-serialization.git",
     "type": "git",
-    "revision": "e9d5334a68a252b75e772e6eda3430e68c8b2b6e"
+    "revision": "67221bebfe80dbb58032283c0bcd0b079cd61944"
   }
 }

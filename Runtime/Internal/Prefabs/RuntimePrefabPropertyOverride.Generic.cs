@@ -20,14 +20,13 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
         {
             public RuntimePrefabPropertyOverride<TOverrideValue> Override;
             public string PropertyPath;
-            public SerializationMetadata Metadata;
 
             public Action<T> GetGenericMethod<T>() where T : UnityObject
             {
                 var factory = this;
                 return obj =>
                 {
-                    factory.Override.SetProperty(ref obj, factory.PropertyPath, Metadata);
+                    factory.Override.SetProperty(ref obj, factory.PropertyPath);
                 };
             }
         }
@@ -37,8 +36,8 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
         static readonly MethodInfo k_SetPropertyMethod = typeof(RuntimePrefabPropertyOverride<TOverrideValue>).GetMethod(nameof(SetProperty), BindingFlags.Instance | BindingFlags.NonPublic);
 
         // ReSharper disable StaticMemberInGenericType
-        static readonly Dictionary<Type, MethodInfo> k_SetPropertyMethods = new Dictionary<Type, MethodInfo>();
-        static readonly object[] k_SetPropertyArguments = new object[3];
+        static readonly Dictionary<Type, MethodInfo> k_SetPropertyMethods = new();
+        static readonly object[] k_SetPropertyArguments = new object[2];
         // ReSharper restore StaticMemberInGenericType
 #endif
 
@@ -56,14 +55,13 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             m_Value = value;
         }
 
-        protected internal override void ApplyOverrideToTarget(UnityObject target, SerializationMetadata metadata)
+        protected internal override void ApplyOverrideToTarget(UnityObject target)
         {
 #if NET_DOTS || ENABLE_IL2CPP
             var factory = new SetPropertyMethodFactory
             {
                 Override = this,
-                PropertyPath = PropertyPath,
-                Metadata = metadata
+                PropertyPath = PropertyPath
             };
 
             k_Factory.Override = this;
@@ -80,20 +78,19 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
 
             k_SetPropertyArguments[0] = target;
             k_SetPropertyArguments[1] = PropertyPath;
-            k_SetPropertyArguments[2] = metadata;
             method.Invoke(this, k_SetPropertyArguments);
 #endif
         }
 
-        internal void SetProperty<TContainer>(ref TContainer container, string propertyPath, SerializationMetadata metadata)
+        internal void SetProperty<TContainer>(ref TContainer container, string propertyPath)
         {
 #if !NET_DOTS && !ENABLE_IL2CPP
-            SceneSerialization.RegisterPropertyBag(typeof(TContainer));
+            SceneSerialization.RegisterPropertyBagRecursively(typeof(TContainer));
 #endif
 
             // TODO: re-use the same visitor and tokenize path
-            var visitor = new RuntimePrefabOverridePropertyVisitor<TOverrideValue>(this, propertyPath, metadata);
-            PropertyContainer.Visit(ref container, visitor);
+            var visitor = new RuntimePrefabOverridePropertyVisitor<TOverrideValue>(this, propertyPath);
+            PropertyContainer.TryAccept(visitor, ref container);
         }
     }
 }

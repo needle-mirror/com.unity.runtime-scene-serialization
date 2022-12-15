@@ -3,9 +3,7 @@
     "references": [
         "Unity.Properties",
         "Unity.TextMeshPro",
-        "Unity.XRTools.Utils",
-        "Unity.Serialization",
-        "Unity.Mathematics"
+        "Unity.Serialization"
     ],
     "includePlatforms": [],
     "excludePlatforms": [],

@@ -4,7 +4,6 @@ using Mono.Cecil.Cil;
 using Mono.Cecil.Rocks;
 using System;
 using System.Reflection;
-using Unity.Properties.CodeGen;
 using Unity.RuntimeSceneSerialization.Internal;
 using MethodAttributes = Mono.Cecil.MethodAttributes;
 using TypeAttributes = Mono.Cecil.TypeAttributes;

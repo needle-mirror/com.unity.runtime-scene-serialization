@@ -14,7 +14,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
         {
             ReflectedPropertyBagUtils.SetIgnoredProperties(typeof(AudioSource), new HashSet<string>
             {
-#if UNITY_EDITOR && UNITY_2021_3_OR_NEWER
+#if UNITY_EDITOR
                 nameof(AudioSource.gamepadSpeakerOutputType),
 #endif
 

@@ -20,12 +20,12 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 public override void SetValue(ref RuntimeAddedGameObject container, string value) => container.TransformPath = value;
             }
 
-            class GameObjectProperty : Property<RuntimeAddedGameObject, GameObjectContainer>
+            class GameObjectProperty : Property<RuntimeAddedGameObject, GameObject>
             {
                 public override string Name => nameof(GameObject);
                 public override bool IsReadOnly => false;
-                public override GameObjectContainer GetValue(ref RuntimeAddedGameObject container) => container.GameObject;
-                public override void SetValue(ref RuntimeAddedGameObject container, GameObjectContainer value) => container.GameObject = value;
+                public override GameObject GetValue(ref RuntimeAddedGameObject container) => container.GameObject;
+                public override void SetValue(ref RuntimeAddedGameObject container, GameObject value) => container.GameObject = value;
             }
 
             public AddedGameObjectPropertyBag()
@@ -36,14 +36,14 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
         }
 
         public string TransformPath;
-        public GameObjectContainer GameObject;
+        public GameObject GameObject;
 
         public RuntimeAddedGameObject() { }
 
-        public RuntimeAddedGameObject(string transformPath, GameObject gameObject, SerializationMetadata metadata)
+        public RuntimeAddedGameObject(string transformPath, GameObject gameObject)
         {
             TransformPath = transformPath;
-            GameObject = new GameObjectContainer(gameObject, metadata);
+            GameObject = gameObject;
         }
 
         [RuntimeInitializeOnLoadMethod(RuntimeInitializeLoadType.BeforeSceneLoad)]

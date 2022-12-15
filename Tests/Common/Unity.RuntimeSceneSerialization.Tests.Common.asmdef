@@ -1,24 +1,20 @@
 {
     "name": "Unity.RuntimeSceneSerialization.Tests.Common",
-    "rootNamespace": "",
     "references": [
         "Unity.Properties",
         "Unity.RuntimeSceneSerialization",
-        "Unity.Serialization",
-        "UnityEngine.TestRunner",
-        "UnityEditor.TestRunner"
+        "Unity.Serialization"
     ],
-    "includePlatforms": [],
+    "optionalUnityReferences": [
+        "TestAssemblies"
+    ],
+    "includePlatforms": [
+
+    ],
     "excludePlatforms": [],
     "allowUnsafeCode": false,
-    "overrideReferences": true,
-    "precompiledReferences": [
-        "nunit.framework.dll"
-    ],
-    "autoReferenced": false,
-    "defineConstraints": [
-        "UNITY_INCLUDE_TESTS"
-    ],
-    "versionDefines": [],
-    "noEngineReferences": false
+    "overrideReferences": false,
+    "precompiledReferences": [],
+    "autoReferenced": true,
+    "defineConstraints": []
 }

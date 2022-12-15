@@ -20,13 +20,7 @@ namespace Unity.RuntimeSceneSerialization.Internal
                 nameof(Rigidbody.solverIterations),
                 nameof(Rigidbody.sleepThreshold),
                 nameof(Rigidbody.maxAngularVelocity),
-                nameof(Rigidbody.solverVelocityIterations),
-#if !UNITY_2021_1_OR_NEWER
-#pragma warning disable 618
-                nameof(Rigidbody.sleepVelocity),
-                nameof(Rigidbody.sleepAngularVelocity)
-#pragma warning restore 618
-#endif
+                nameof(Rigidbody.solverVelocityIterations)
             });
         }
 

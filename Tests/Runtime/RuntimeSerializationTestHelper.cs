@@ -4,7 +4,8 @@ using UnityEngine.SceneManagement;
 
 namespace Unity.RuntimeSceneSerialization.Tests
 {
-    // ReSharper disable once UnusedMember.Global
+    // Used by CI to set up build scenes for player tests
+    // ReSharper disable once UnusedType.Global
     class RuntimeSerializationTestHelper
     {
         // ReSharper disable once UnusedMember.Local
@@ -12,7 +13,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
         {
             const string scenePath = "Assets/defaultScene.unity";
             EditorSceneManager.SaveScene(SceneManager.GetActiveScene(), scenePath);
-            PlayModeSaveReloadTests.AddBuildScenes();
+            SaveReloadTests.AddBuildScenes();
         }
     }
 }

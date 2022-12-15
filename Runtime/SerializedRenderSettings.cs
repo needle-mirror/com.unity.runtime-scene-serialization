@@ -14,22 +14,22 @@ namespace Unity.RuntimeSceneSerialization
         AmbientMode m_AmbientMode = AmbientMode.Skybox;
 
         [SerializeField]
-        Color m_AmbientSkyColor = new Color(0.212f, 0.227f, 0.259f);
+        Color m_AmbientSkyColor = new(0.212f, 0.227f, 0.259f);
 
         [SerializeField]
-        Color m_AmbientEquatorColor = new Color(0.115f, 0.125f, 0.135f);
+        Color m_AmbientEquatorColor = new(0.115f, 0.125f, 0.135f);
 
         [SerializeField]
-        Color m_AmbientGroundColor = new Color(0.047f, 0.045f, 0.035f);
+        Color m_AmbientGroundColor = new(0.047f, 0.045f, 0.035f);
 
         [SerializeField]
         float m_AmbientIntensity = 1f;
 
         [SerializeField]
-        Color m_AmbientLight = new Color(0.212f, 0.227f, 0.259f);
+        Color m_AmbientLight = new(0.212f, 0.227f, 0.259f);
 
         [SerializeField]
-        Color m_SubtractiveShadowColor = new Color(0.42f, 0.478f, 0.627f);
+        Color m_SubtractiveShadowColor = new(0.42f, 0.478f, 0.627f);
 
         [SerializeField]
         float m_ReflectionIntensity = 1f;
@@ -58,11 +58,7 @@ namespace Unity.RuntimeSceneSerialization
         Material m_Skybox;
 
         [SerializeField]
-#if UNITY_2021_2_OR_NEWER
         Texture m_CustomReflection;
-#else
-        Cubemap m_CustomReflection;
-#endif
 
         [SerializeField]
         Light m_Sun;
@@ -101,11 +97,9 @@ namespace Unity.RuntimeSceneSerialization
             m_Skybox = RenderSettings.skybox;
 #if UNITY_2022_1_OR_NEWER
             m_CustomReflection = RenderSettings.customReflectionTexture;
-#elif UNITY_2021_2_OR_NEWER
+#else
             if (RenderSettings.customReflection is Cubemap customReflection)
                 m_CustomReflection = customReflection;
-#else
-            m_CustomReflection = RenderSettings.customReflection;
 #endif
 
             m_Sun = RenderSettings.sun;

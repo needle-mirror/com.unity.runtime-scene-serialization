@@ -1,0 +1,415 @@
+{
+    "m_FormatVersion": 2,
+    "m_RootGameObjects": [
+        {
+            "prefabMetadata": null,
+            "name": "Main Camera",
+            "hideFlags": 0,
+            "layer": 0,
+            "tag": "MainCamera",
+            "active": true,
+            "components": [
+                {
+                    "$type": "UnityEngine.Transform, UnityEngine.CoreModule",
+                    "localPosition": {
+                        "x": 0,
+                        "y": 1,
+                        "z": -10
+                    },
+                    "localRotation": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0,
+                        "w": 1
+                    },
+                    "localScale": {
+                        "x": 1,
+                        "y": 1,
+                        "z": 1
+                    },
+                    "hideFlags": 0
+                },
+                {
+                    "$type": "UnityEngine.Camera, UnityEngine.CoreModule",
+                    "nearClipPlane": 0.3,
+                    "farClipPlane": 1000,
+                    "fieldOfView": 60,
+                    "renderingPath": -1,
+                    "allowHDR": true,
+                    "allowMSAA": true,
+                    "allowDynamicResolution": false,
+                    "forceIntoRenderTexture": false,
+                    "orthographicSize": 5,
+                    "orthographic": false,
+                    "opaqueSortMode": 0,
+                    "transparencySortMode": 0,
+                    "depth": -1,
+                    "cullingMask": -1,
+                    "eventMask": -1,
+                    "layerCullSpherical": false,
+                    "cameraType": 1,
+                    "overrideSceneCullingMask": 0,
+                    "useOcclusionCulling": true,
+                    "backgroundColor": {
+                        "r": 0.1921569,
+                        "g": 0.3019608,
+                        "b": 0.4745098,
+                        "a": 0
+                    },
+                    "clearFlags": 1,
+                    "depthTextureMode": 0,
+                    "clearStencilAfterLightingPass": false,
+                    "usePhysicalProperties": false,
+                    "sensorSize": {
+                        "x": 36,
+                        "y": 24
+                    },
+                    "lensShift": {
+                        "x": 0,
+                        "y": 0
+                    },
+                    "focalLength": 50,
+                    "gateFit": 2,
+                    "rect": {
+                        "x": 0,
+                        "y": 0,
+                        "width": 1,
+                        "height": 1
+                    },
+                    "targetTexture": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "targetDisplay": 0,
+                    "useJitteredProjectionMatrixForTransparentRendering": true,
+                    "stereoSeparation": 0.022,
+                    "stereoConvergence": 10,
+                    "stereoTargetEye": 3,
+                    "enabled": true,
+                    "hideFlags": 0
+                },
+                {
+                    "$type": "UnityEngine.AudioListener, UnityEngine.AudioModule",
+                    "velocityUpdateMode": 2,
+                    "enabled": true,
+                    "hideFlags": 0
+                }
+            ],
+            "children": []
+        },
+        {
+            "prefabMetadata": null,
+            "name": "Directional Light",
+            "hideFlags": 0,
+            "layer": 0,
+            "tag": "Untagged",
+            "active": true,
+            "components": [
+                {
+                    "$type": "UnityEngine.Transform, UnityEngine.CoreModule",
+                    "localPosition": {
+                        "x": 0,
+                        "y": 3,
+                        "z": 0
+                    },
+                    "localRotation": {
+                        "x": 0.4082179,
+                        "y": -0.2345697,
+                        "z": 0.1093816,
+                        "w": 0.8754261
+                    },
+                    "localScale": {
+                        "x": 1,
+                        "y": 1,
+                        "z": 1
+                    },
+                    "hideFlags": 0
+                },
+                {
+                    "$type": "UnityEngine.Light, UnityEngine.CoreModule",
+                    "type": 1,
+                    "shape": 0,
+                    "spotAngle": 30,
+                    "innerSpotAngle": 21.80208,
+                    "color": {
+                        "r": 1,
+                        "g": 0.9568627,
+                        "b": 0.8392157,
+                        "a": 1
+                    },
+                    "colorTemperature": 6570,
+                    "useColorTemperature": false,
+                    "intensity": 1,
+                    "bounceIntensity": 1,
+                    "useBoundingSphereOverride": false,
+                    "shadowCustomResolution": -1,
+                    "shadowBias": 0.05,
+                    "shadowNormalBias": 0.4,
+                    "shadowNearPlane": 0.2,
+                    "useShadowMatrixOverride": false,
+                    "range": 10,
+                    "flare": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "cullingMask": -1,
+                    "renderingLayerMask": 1,
+                    "lightShadowCasterMode": 0,
+                    "shadowRadius": 0,
+                    "shadowAngle": 0,
+                    "shadows": 2,
+                    "shadowStrength": 1,
+                    "shadowResolution": -1,
+                    "cookieSize": 10,
+                    "cookie": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "renderMode": 0,
+                    "areaSize": {
+                        "x": 1,
+                        "y": 1
+                    },
+                    "lightmapBakeType": 1,
+                    "enabled": true,
+                    "hideFlags": 0
+                }
+            ],
+            "children": []
+        },
+        {
+            "prefabMetadata": {
+                "m_Guid": "091659965a98e4d10bde2c70a91bb95f",
+                "RemovedComponents": null,
+                "AddedGameObjects": null,
+                "AddedComponents": null,
+                "PropertyOverrides": [
+                    {
+                        "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideString, Unity.RuntimeSceneSerialization",
+                        "m_Value": "Capsule",
+                        "m_PropertyPath": "m_Name",
+                        "m_TransformPath": "",
+                        "m_ComponentIndex": -1
+                    },
+                    {
+                        "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabPropertyOverrideList, Unity.RuntimeSceneSerialization",
+                        "m_List": [
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalRotation.x",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalRotation.y",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalRotation.z",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 1,
+                                "m_PropertyPath": "m_LocalRotation.w",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            }
+                        ],
+                        "m_PropertyPath": "m_LocalRotation",
+                        "m_TransformPath": "",
+                        "m_ComponentIndex": 0
+                    },
+                    {
+                        "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabPropertyOverrideList, Unity.RuntimeSceneSerialization",
+                        "m_List": [
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalPosition.x",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalPosition.y",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalPosition.z",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            }
+                        ],
+                        "m_PropertyPath": "m_LocalPosition",
+                        "m_TransformPath": "",
+                        "m_ComponentIndex": 0
+                    },
+                    {
+                        "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideLong, Unity.RuntimeSceneSerialization",
+                        "m_Value": 2,
+                        "m_PropertyPath": "m_RootOrder",
+                        "m_TransformPath": "",
+                        "m_ComponentIndex": 0
+                    },
+                    {
+                        "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabPropertyOverrideList, Unity.RuntimeSceneSerialization",
+                        "m_List": [
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalEulerAnglesHint.x",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalEulerAnglesHint.y",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            },
+                            {
+                                "$type": "Unity.RuntimeSceneSerialization.Internal.Prefabs.RuntimePrefabOverrideFloat, Unity.RuntimeSceneSerialization",
+                                "m_Value": 0,
+                                "m_PropertyPath": "m_LocalEulerAnglesHint.z",
+                                "m_TransformPath": "",
+                                "m_ComponentIndex": 0
+                            }
+                        ],
+                        "m_PropertyPath": "m_LocalEulerAnglesHint",
+                        "m_TransformPath": "",
+                        "m_ComponentIndex": 0
+                    }
+                ]
+            },
+            "name": "Capsule",
+            "hideFlags": 0,
+            "layer": 0,
+            "tag": "Untagged",
+            "active": true,
+            "components": [],
+            "children": null
+        },
+        {
+            "prefabMetadata": null,
+            "name": "Cube",
+            "hideFlags": 0,
+            "layer": 0,
+            "tag": "Untagged",
+            "active": true,
+            "components": [
+                {
+                    "$type": "UnityEngine.Transform, UnityEngine.CoreModule",
+                    "localPosition": {
+                        "x": 1,
+                        "y": 0,
+                        "z": -0.11
+                    },
+                    "localRotation": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0,
+                        "w": 1
+                    },
+                    "localScale": {
+                        "x": 1,
+                        "y": 1,
+                        "z": 1
+                    },
+                    "hideFlags": 0
+                },
+                {
+                    "$type": "UnityEngine.MeshFilter, UnityEngine.CoreModule",
+                    "sharedMesh": {
+                        "sceneID": 0,
+                        "guid": "0000000000000000e000000000000000",
+                        "fileId": 10202
+                    },
+                    "hideFlags": 0
+                },
+                {
+                    "$type": "UnityEngine.MeshRenderer, UnityEngine.CoreModule",
+                    "additionalVertexStreams": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "scaleInLightmap": 1,
+                    "receiveGI": 1,
+                    "stitchLightmapSeams": true,
+                    "enabled": true,
+                    "shadowCastingMode": 1,
+                    "receiveShadows": true,
+                    "forceRenderingOff": false,
+                    "motionVectorGenerationMode": 1,
+                    "lightProbeUsage": 1,
+                    "reflectionProbeUsage": 1,
+                    "renderingLayerMask": 1,
+                    "rendererPriority": 0,
+                    "rayTracingMode": 2,
+                    "sortingLayerName": "Default",
+                    "sortingLayerID": 0,
+                    "sortingOrder": 0,
+                    "sortingGroupID": 1048575,
+                    "sortingGroupOrder": 0,
+                    "allowOcclusionWhenDynamic": true,
+                    "staticBatchRootTransform": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "lightProbeProxyVolumeOverride": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "probeAnchor": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "sharedMaterials": [
+                        {
+                            "sceneID": 0,
+                            "guid": "0000000000000000f000000000000000",
+                            "fileId": 10303
+                        }
+                    ],
+                    "hideFlags": 0
+                },
+                {
+                    "$type": "UnityEngine.BoxCollider, UnityEngine.PhysicsModule",
+                    "center": {
+                        "x": 0,
+                        "y": 0,
+                        "z": 0
+                    },
+                    "enabled": true,
+                    "isTrigger": false,
+                    "sharedMaterial": {
+                        "sceneID": -1,
+                        "guid": null,
+                        "fileId": 0
+                    },
+                    "hideFlags": 0
+                }
+            ],
+            "children": []
+        }
+    ]
+}

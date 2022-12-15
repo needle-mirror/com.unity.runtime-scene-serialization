@@ -11,7 +11,7 @@ namespace Unity.RuntimeSceneSerialization.EditorInternal
         const int k_Indent = 15;
         bool m_AssetsExpanded;
         bool m_PrefabsExpanded;
-        readonly Dictionary<string, bool> m_Foldouts = new Dictionary<string, bool>();
+        readonly Dictionary<string, bool> m_Foldouts = new();
         SerializedProperty m_SceneAssetProperty;
 
         void OnEnable() { m_SceneAssetProperty = serializedObject.FindProperty("m_SceneAsset"); }

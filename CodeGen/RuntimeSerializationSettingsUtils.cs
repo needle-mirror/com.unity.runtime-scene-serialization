@@ -14,7 +14,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static HashSet<string> s_TypeExceptions;
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-        static readonly List<string> k_SortableList = new List<string>();
+        static readonly List<string> k_SortableList = new();
 
         internal static void ClearSettingsCache()
         {

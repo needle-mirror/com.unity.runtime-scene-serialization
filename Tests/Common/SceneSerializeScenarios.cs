@@ -42,6 +42,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
             yield return new NestedObjects();
             yield return new MonoBehaviourByValScenario();
             yield return new MonoBehaviourSerializationCallbackReceiverScenario();
+            yield return new LoadLegacyScene();
 
 #if UNITY_EDITOR
             yield return new SerializedReferenceScenario();
@@ -53,20 +54,41 @@ namespace Unity.RuntimeSceneSerialization.Tests
     {
         string ISceneSerializeTestScenario.Name => "BasicGameObject";
 
+        const string k_GameObjectName = "MyGo";
+        static readonly Vector3 k_ExpectedPosition = new Vector3(1.0f, 1.1f, 1.2f);
+        const int k_ExpectedLayer = 3;
+        const string k_ExpectedTag = "MainCamera";
+
+#if UNITY_EDITOR
+        const HideFlags k_ExpectedHideFlags = HideFlags.NotEditable;
+#endif
+
         void ISceneSerializeTestScenario.BuildContent()
         {
-            var go = new GameObject("MyGo");
-            go.transform.position = new Vector3(1.0f, 1.1f, 1.2f);
+            var go = new GameObject(k_GameObjectName);
+            go.layer = k_ExpectedLayer;
+            go.tag = k_ExpectedTag;
+            go.transform.position = k_ExpectedPosition;
+
+#if UNITY_EDITOR
+            go.hideFlags = k_ExpectedHideFlags;
+#endif
         }
 
         void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
         {
-            var go = GameObject.Find("MyGo");
+            var go = GameObject.Find(k_GameObjectName);
             Assert.IsNotNull(go);
-            Assert.AreEqual(new Vector3(1.0f, 1.1f, 1.2f), go.transform.position);
+            Assert.AreEqual(k_ExpectedLayer, go.layer);
+            Assert.AreEqual(k_ExpectedTag, go.tag);
+            Assert.AreEqual(k_ExpectedPosition, go.transform.position);
 
-            var goRenamed = GameObject.Find("Renamed");
-            Assert.IsNull(goRenamed);
+#if UNITY_EDITOR
+            Assert.AreEqual(k_ExpectedHideFlags, go.hideFlags);
+#endif
+
+            var emptyName = GameObject.Find(string.Empty);
+            Assert.IsNull(emptyName);
         }
 
 #if UNITY_EDITOR
@@ -205,6 +227,44 @@ namespace Unity.RuntimeSceneSerialization.Tests
         {
             // Expect default skybox to be included in asset pack
             Assert.AreEqual(1, assetPack.AssetCount);
+        }
+#endif
+    }
+
+    class LoadLegacyScene : ISceneSerializeTestScenario
+    {
+        const string k_LegacyScenePath = "RuntimeSceneSerializationTests/LegacyScene";
+        const string k_LegacySceneAssetPackPath = "RuntimeSceneSerializationTests/LegacySceneAssetPack";
+        const string k_CapsuleName = "Capsule";
+        const string k_CubeName = "Cube";
+
+        string ISceneSerializeTestScenario.Name => "LoadLegacyScene";
+
+        void ISceneSerializeTestScenario.BuildContent()
+        {
+            var json = Resources.Load<TextAsset>(k_LegacyScenePath).text;
+            var assetPack = Resources.Load<AssetPack>(k_LegacySceneAssetPackPath);
+            SceneSerialization.ImportScene(json, assetPack);
+        }
+
+        void ISceneSerializeTestScenario.CompareWithOriginalContent(ScenarioTestPhase phase)
+        {
+            var capsule = GameObject.Find(k_CapsuleName);
+            Assert.IsNotNull(capsule);
+
+            var cube = GameObject.Find(k_CubeName);
+            Assert.IsNotNull(cube);
+
+            var meshFilter = cube.GetComponent<MeshFilter>();
+            Assert.IsNotNull(meshFilter);
+            Assert.IsNotNull(meshFilter.sharedMesh);
+        }
+
+#if UNITY_EDITOR
+        void ISceneSerializeTestScenario.CheckAssetPack(AssetPack assetPack)
+        {
+            // Expect Capsule prefab, cube mesh, and default material
+            Assert.AreEqual(3, assetPack.AssetCount);
         }
 #endif
     }

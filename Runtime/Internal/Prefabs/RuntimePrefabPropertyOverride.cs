@@ -16,7 +16,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
     {
 #if UNITY_EDITOR
         static readonly MethodInfo k_GetOverridesMethod = typeof(RuntimePrefabPropertyOverride).GetMethods().First(x => x.IsGenericMethod && x.Name == nameof(GetOverrides));
-        static readonly Dictionary<Type, MethodInfo> k_GetOverridesMethods = new Dictionary<Type, MethodInfo>();
+        static readonly Dictionary<Type, MethodInfo> k_GetOverridesMethods = new();
         static readonly object[] k_GetOverridesArguments = new object[5];
 #endif
 
@@ -137,8 +137,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 case SerializedPropertyType.String:
                     return new RuntimePrefabOverrideString(propertyPath, transformPath, componentIndex, property.stringValue);
                 case SerializedPropertyType.ObjectReference:
-                    var objectReference = UnityObjectReference.GetReferenceForObject(property.objectReferenceValue, metadata);
-                    return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex, objectReference);
+                    return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex, property.objectReferenceValue);
                 case SerializedPropertyType.LayerMask:
                     return new RuntimePrefabOverrideInt(propertyPath, transformPath, componentIndex, property.intValue);
                 case SerializedPropertyType.Enum:
@@ -150,8 +149,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 case SerializedPropertyType.AnimationCurve:
                     return new RuntimePrefabOverrideAnimationCurve(propertyPath, transformPath, componentIndex, property.animationCurveValue);
                 case SerializedPropertyType.ExposedReference:
-                    var exposedReference = UnityObjectReference.GetReferenceForObject(property.exposedReferenceValue, metadata);
-                    return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex, exposedReference);
+                    return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex, property.exposedReferenceValue);
                 case SerializedPropertyType.FixedBufferSize:
                     return new RuntimePrefabOverrideInt(propertyPath, transformPath, componentIndex, property.fixedBufferSize);
                 case SerializedPropertyType.ManagedReference:
@@ -206,7 +204,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             while (hasNext);
         }
 #endif
-        public void ApplyOverride(Transform root, SerializationMetadata metadata)
+        public void ApplyOverride(Transform root)
         {
             var targetTransform = root.GetTransformAtPath(m_TransformPath);
             if (targetTransform == null)
@@ -232,13 +230,13 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     return;
             }
 
-            ApplyOverrideToTarget(target, metadata);
+            ApplyOverrideToTarget(target);
         }
 
-        protected internal abstract void ApplyOverrideToTarget(UnityObject target, SerializationMetadata metadata);
+        protected internal abstract void ApplyOverrideToTarget(UnityObject target);
 
         public static RuntimePrefabPropertyOverride Create<TValue>(string propertyPath, string transformPath,
-            int componentIndex, TValue value, SerializationMetadata metadata = null)
+            int componentIndex, TValue value)
         {
             switch (value)
             {
@@ -325,16 +323,14 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 }
                 case UnityObject unityObject:
                 {
-                    return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex,
-                        UnityObjectReference.GetReferenceForObject(unityObject, metadata));
+                    return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex, unityObject);
                 }
                 default:
                 {
                     // TODO: Handle null values better
                     if (typeof(TValue) == typeof(UnityObject) && value == null)
                     {
-                        return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex,
-                            UnityObjectReference.NullObjectReference);
+                        return new RuntimePrefabOverrideUnityObjectReference(propertyPath, transformPath, componentIndex, null);
                     }
 
                     throw new NotImplementedException();
@@ -342,7 +338,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
             }
         }
 
-        public static void Update<TValue>(RuntimePrefabPropertyOverride @override, TValue value, SerializationMetadata metadata = null)
+        public static void Update<TValue>(RuntimePrefabPropertyOverride @override, TValue value)
         {
             var propertyPath = @override.m_PropertyPath;
             var transformPath = @override.m_TransformPath;
@@ -424,7 +420,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                 }
                 case UnityObject unityObject:
                 {
-                    ((RuntimePrefabOverrideUnityObjectReference)@override).Value = UnityObjectReference.GetReferenceForObject(unityObject, metadata);
+                    ((RuntimePrefabOverrideUnityObjectReference)@override).Value = unityObject;
                     break;
                 }
                 default:
@@ -432,7 +428,7 @@ namespace Unity.RuntimeSceneSerialization.Internal.Prefabs
                     // TODO: Handle null values better
                     if (typeof(TValue) == typeof(UnityObject) && value == null)
                     {
-                        ((RuntimePrefabOverrideUnityObjectReference)@override).Value = UnityObjectReference.NullObjectReference;
+                        ((RuntimePrefabOverrideUnityObjectReference)@override).Value = null;
                         break;
                     }
 

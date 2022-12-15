@@ -26,12 +26,12 @@ namespace Unity.RuntimeSceneSerialization
             [SerializeField]
             UnityObject[] m_Assets;
 
-            readonly Dictionary<long, UnityObject> m_FileIdToAssetMap = new Dictionary<long, UnityObject>();
-            readonly Dictionary<UnityObject, long> m_AssetToFileIdMap = new Dictionary<UnityObject, long>();
+            readonly Dictionary<long, UnityObject> m_FileIdToAssetMap = new();
+            readonly Dictionary<UnityObject, long> m_AssetToFileIdMap = new();
 
             // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-            readonly List<long> k_FileIds = new List<long>();
-            readonly List<UnityObject> k_Assets = new List<UnityObject>();
+            readonly List<long> k_FileIds = new();
+            readonly List<UnityObject> k_Assets = new();
 
             internal Dictionary<long, UnityObject> Assets => m_FileIdToAssetMap;
 
@@ -137,10 +137,10 @@ namespace Unity.RuntimeSceneSerialization
 
 #if UNITY_EDITOR
         const string k_AssetPackFilter = "t:" + nameof(AssetPack);
-        static readonly Dictionary<SceneAsset, AssetPack> k_SceneToAssetPackCache = new Dictionary<SceneAsset, AssetPack>();
+        static readonly Dictionary<SceneAsset, AssetPack> k_SceneToAssetPackCache = new();
 #endif
 
-        readonly HashSet<IPrefabFactory> m_PrefabFactories = new HashSet<IPrefabFactory>();
+        readonly HashSet<IPrefabFactory> m_PrefabFactories = new();
 
         [SerializeField]
         UnityObject m_SceneAsset;
@@ -155,23 +155,23 @@ namespace Unity.RuntimeSceneSerialization
 
         [HideInInspector]
         [SerializeField]
-        List<string> m_PrefabGuids = new List<string>();
+        List<string> m_PrefabGuids = new();
 
         [HideInInspector]
         [SerializeField]
-        List<GameObject> m_Prefabs = new List<GameObject>();
+        List<GameObject> m_Prefabs = new();
 
-        readonly Dictionary<string, Asset> m_AssetDictionary = new Dictionary<string, Asset>();
-        readonly Dictionary<UnityObject, KeyValuePair<string, long>> m_AssetLookupMap = new Dictionary<UnityObject, KeyValuePair<string, long>>();
-        readonly Dictionary<string, GameObject> m_PrefabDictionary = new Dictionary<string, GameObject>();
+        readonly Dictionary<string, Asset> m_AssetDictionary = new();
+        readonly Dictionary<UnityObject, KeyValuePair<string, long>> m_AssetLookupMap = new();
+        readonly Dictionary<string, GameObject> m_PrefabDictionary = new();
 
 #if UNITY_EDITOR
-        readonly Dictionary<UnityObject, string> m_GuidMap = new Dictionary<UnityObject, string>();
+        readonly Dictionary<UnityObject, string> m_GuidMap = new();
 #endif
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-        readonly List<string> k_Guids = new List<string>();
-        readonly List<Asset> k_Assets = new List<Asset>();
+        readonly List<string> k_Guids = new();
+        readonly List<Asset> k_Assets = new();
 
         internal Dictionary<string, Asset> Assets => m_AssetDictionary;
         internal Dictionary<string, GameObject> Prefabs => m_PrefabDictionary;

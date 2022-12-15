@@ -56,7 +56,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
 
             var visitor = new CopyVisitor<Transform>();
             visitor.destination = m_Target;
-            PropertyContainer.Visit(ref m_Original, visitor);
+            PropertyContainer.Accept(visitor, ref m_Original);
 
             // TODO: Investigate why transforms are not exactly equal on Android
             Assert.IsTrue(m_Original.position == m_Target.position);

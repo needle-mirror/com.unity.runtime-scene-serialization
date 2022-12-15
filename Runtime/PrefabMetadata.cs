@@ -1,5 +1,4 @@
 ﻿using System.Collections.Generic;
-using Unity.RuntimeSceneSerialization.Internal;
 using Unity.RuntimeSceneSerialization.Internal.Prefabs;
 using UnityEngine;
 
@@ -36,30 +35,14 @@ namespace Unity.RuntimeSceneSerialization.Prefabs
             set => m_Guid = value;
         }
 
-        internal void Setup(PrefabMetadataContainer metadataContainer)
+        internal void Setup(string guid, List<RuntimeAddedGameObject> addedGameObjects, List<RuntimeAddedComponent> addedComponents,
+            List<RuntimeRemovedComponent> removedComponents, List<RuntimePrefabPropertyOverride> propertyOverrides)
         {
-            Guid = metadataContainer.Guid;
-            m_AddedGameObjects = metadataContainer.AddedGameObjects;
-            m_AddedComponents = metadataContainer.AddedComponents;
-            m_RemovedComponents = metadataContainer.RemovedComponents;
-            PropertyOverrides = metadataContainer.PropertyOverrides;
-        }
-
-        internal static void PostProcessOverrideList(List<RuntimePrefabPropertyOverride> list, SerializationMetadata metadata)
-        {
-            var count = list.Count;
-            for (var i = 0; i < count; i++)
-            {
-                var propertyOverride = list[i];
-                if (propertyOverride is IRuntimePrefabOverrideUnityObjectReference objectProperty)
-                {
-                    objectProperty.ConvertToUnityObjectOverride(list, i, metadata);
-                }
-                else if (propertyOverride is RuntimePrefabPropertyOverrideList listProperty)
-                {
-                    PostProcessOverrideList(listProperty.List, metadata);
-                }
-            }
+            Guid = guid;
+            m_AddedGameObjects = addedGameObjects;
+            m_AddedComponents = addedComponents;
+            m_RemovedComponents = removedComponents;
+            PropertyOverrides = propertyOverrides;
         }
 
         /// <summary>
@@ -69,10 +52,8 @@ namespace Unity.RuntimeSceneSerialization.Prefabs
         /// <param name="transformPath">The transform path of the GameObject relative to the prefab root</param>
         /// <param name="componentIndex">The index of the component on the target transform</param>
         /// <param name="value">The value to be applied as an override</param>
-        /// <param name="metadata">SerializationMetadata to use for scene object or asset references</param>
         /// <typeparam name="TValue">The property value type</typeparam>
-        public void SetPropertyOverride<TValue>(string propertyPath, string transformPath, int componentIndex,
-            TValue value, SerializationMetadata metadata = null)
+        public void SetPropertyOverride<TValue>(string propertyPath, string transformPath, int componentIndex, TValue value)
         {
             PropertyOverrides ??= new List<RuntimePrefabPropertyOverride>();
 
@@ -84,11 +65,11 @@ namespace Unity.RuntimeSceneSerialization.Prefabs
                     continue;
 
                 hasOverride = true;
-                RuntimePrefabPropertyOverride.Update(existingOverride, value, metadata);
+                RuntimePrefabPropertyOverride.Update(existingOverride, value);
             }
 
             if (!hasOverride)
-                PropertyOverrides.Add(RuntimePrefabPropertyOverride.Create(propertyPath, transformPath, componentIndex, value, metadata));
+                PropertyOverrides.Add(RuntimePrefabPropertyOverride.Create(propertyPath, transformPath, componentIndex, value));
         }
 
         /// <summary>
@@ -96,8 +77,7 @@ namespace Unity.RuntimeSceneSerialization.Prefabs
         /// </summary>
         /// <param name="transformPath">The transform path of the GameObject relative to the prefab root</param>
         /// <param name="addedGameObject">The added GameObject to be applied as an override</param>
-        /// <param name="metadata">SerializationMetadata to be used when serializing the scene</param>
-        public void SetAddedGameObject(string transformPath, GameObject addedGameObject, SerializationMetadata metadata)
+        public void SetAddedGameObject(string transformPath, GameObject addedGameObject)
         {
             m_AddedGameObjects ??= new List<RuntimeAddedGameObject>();
 
@@ -108,11 +88,11 @@ namespace Unity.RuntimeSceneSerialization.Prefabs
                     continue;
 
                 hasOverride = true;
-                existingOverride.GameObject = new GameObjectContainer(addedGameObject, metadata);
+                existingOverride.GameObject = addedGameObject;
             }
 
             if (!hasOverride)
-                m_AddedGameObjects.Add(new RuntimeAddedGameObject(transformPath, gameObject, metadata));
+                m_AddedGameObjects.Add(new RuntimeAddedGameObject(transformPath, gameObject));
         }
 
         /// <summary>

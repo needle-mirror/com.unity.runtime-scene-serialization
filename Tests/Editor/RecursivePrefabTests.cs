@@ -4,11 +4,11 @@ using UnityEngine;
 using UnityEngine.SceneManagement;
 using UnityObject = UnityEngine.Object;
 
-namespace Unity.RuntimeSceneSerialization.Tests
+namespace Unity.RuntimeSceneSerialization.Tests.Editor
 {
     class RecursivePrefabTests
     {
-        const string k_RecursivePrefabPath = "RuntimeSerializationTests/Recursive Prefab";
+        const string k_RecursivePrefabPath = "RuntimeSceneSerializationTests/Recursive Prefab";
 
         [Test]
         public void SaveLoadRecursivePrefab()

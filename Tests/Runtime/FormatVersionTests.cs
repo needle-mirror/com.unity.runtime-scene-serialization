@@ -1,7 +1,6 @@
 ﻿using NUnit.Framework;
 using System;
 using UnityEngine;
-using UnityEngine.TestTools;
 using UnityObject = UnityEngine.Object;
 
 namespace Unity.RuntimeSceneSerialization.Tests
@@ -52,19 +51,18 @@ namespace Unity.RuntimeSceneSerialization.Tests
             }
         }
 
-        const string k_OldFormatScenePath = "RuntimeSerializationTests/Old Format Scene";
+        const string k_OldFormatScenePath = "RuntimeSceneSerializationTests/Old Format Scene";
 
         [Test]
         public void DeserializeVanillaClassWithIncorrectFormatVersionThrows()
         {
-            LogAssert.ignoreFailingMessages = true;
             var json = SceneSerialization.ToJson(new OldFormat());
             var threwException = false;
             try
             {
                 SceneSerialization.FromJson<NewFormat>(json);
             }
-            catch (Exception)
+            catch (FormatException)
             {
                 threwException = true;
             }
@@ -75,7 +73,6 @@ namespace Unity.RuntimeSceneSerialization.Tests
         [Test]
         public void DeserializeGameObjectWithMonoBehaviourWithIncorrectFormatVersionThrows()
         {
-            LogAssert.ignoreFailingMessages = true;
             SettableFormatMonoBehaviour.FormatVersion = 1;
             var gameObject = new GameObject("Settable Format", typeof(SettableFormatMonoBehaviour));
             var json = SceneSerialization.ToJson(gameObject);
@@ -85,7 +82,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
                 SettableFormatMonoBehaviour.FormatVersion = 2;
                 SceneSerialization.FromJson<GameObject>(json);
             }
-            catch (Exception)
+            catch (FormatException)
             {
                 threwException = true;
             }
@@ -98,7 +95,6 @@ namespace Unity.RuntimeSceneSerialization.Tests
         [Test]
         public void DeserializeMonoBehaviourWithIncorrectFormatVersionThrows()
         {
-            LogAssert.ignoreFailingMessages = true;
             SettableFormatMonoBehaviour.FormatVersion = 1;
             var behaviour = new GameObject("Settable Format").AddComponent<SettableFormatMonoBehaviour>();
             var json = SceneSerialization.ToJson(behaviour);
@@ -108,7 +104,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
                 SettableFormatMonoBehaviour.FormatVersion = 2;
                 SceneSerialization.FromJsonOverride(json, ref behaviour);
             }
-            catch (Exception)
+            catch (FormatException)
             {
                 threwException = true;
             }

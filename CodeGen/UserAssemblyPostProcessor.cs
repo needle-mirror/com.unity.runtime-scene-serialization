@@ -7,8 +7,7 @@ using System.IO;
 using System.Linq;
 using System.Reflection;
 using Unity.CompilationPipeline.Common.ILPostProcessing;
-using Unity.Properties.CodeGen;
-using Unity.Properties.CodeGen.Blocks;
+using Unity.RuntimeSceneSerialization.CodeGen.Blocks;
 using Unity.RuntimeSceneSerialization.Internal;
 using UnityEngine;
 using UnityEngine.Scripting;
@@ -26,7 +25,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static readonly MethodInfo k_GetTypeMethod = typeof(Type).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .First(x => x.GetParameters().Length == 1 && x.Name == nameof(Type.GetType));
 
-        static readonly HashSet<string> k_IgnoredTypeNames = new HashSet<string>
+        static readonly HashSet<string> k_IgnoredTypeNames = new()
         {
             typeof(AnimationCurve).FullName,
             typeof(Keyframe).FullName,
@@ -100,9 +99,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             if (!ShouldProcess(compiledAssembly))
                 return null;
 
-#if UNITY_2020_1_OR_NEWER
             CodeGenUtils.CallInitializeOnLoadMethodsIfNeeded();
-#endif
 
             using var assemblyDefinition = CreateAssemblyDefinition(compiledAssembly);
             return GeneratePropertyBags(assemblyDefinition, compiledAssembly.Defines);
@@ -180,13 +177,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static void GeneratePropertyBagsForSerializableTypes(Context context, HashSet<TypeDefinition> serializableContainerTypes)
         {
             var module = context.Module;
-            var createValueMethod = module.ImportReference(UnityObjectReference.CreateValueMethod);
-            var createArrayMethod = module.ImportReference(UnityObjectReference.CreateArrayMethod);
-            var createListMethod = module.ImportReference(UnityObjectReference.CreateListMethod);
             var getTypeMethod = module.ImportReference(k_GetTypeMethod);
             var objectReference = context.ImportReference(typeof(object));
-            var unityObjectReference = context.ImportReference(typeof(UnityObjectReference));
-            var unityObjectListReference = context.ImportReference(typeof(List<UnityObjectReference>));
             var listType = context.ImportReference(typeof(List<>));
             var preserveAttributeConstructor = module.ImportReference(typeof(PreserveAttribute).GetConstructor(Type.EmptyTypes));
 
@@ -205,9 +197,8 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 Console.WriteLine($"GENERATE FOR {type}");
                 var containerType = type.Module == module ? type : context.ImportReference(type);
                 externalContainerTypes.TryGetValue(type.FullName, out var externalContainer);
-                var propertyBagType = GeneratePropertyBag(context, containerType, externalContainer,
-                    externalContainerTypes, getTypeMethod, createValueMethod, createArrayMethod, createListMethod,
-                    unityObjectReference, unityObjectListReference, listType);
+                var propertyBagType = GeneratePropertyBag(context, containerType, listType, externalContainer,
+                    externalContainerTypes, getTypeMethod);
 
                 moduleTypes.Add(propertyBagType);
                 propertyBagDefinitions.Add(new Tuple<TypeDefinition, TypeReference>(propertyBagType, externalContainer ?? containerType));
@@ -259,10 +250,9 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             return externalTypeContainer;
         }
 
-        static TypeDefinition GeneratePropertyBag(Context context, TypeReference containerType, TypeDefinition externalContainer,
-            Dictionary<string, TypeDefinition> externalContainerTypes, MethodReference getTypeMethod,
-            MethodReference createValueMethod, MethodReference createArrayMethod, MethodReference createListMethod,
-            TypeReference unityObjectReference, TypeReference unityObjectListReference, TypeReference listType)
+        static TypeDefinition GeneratePropertyBag(Context context, TypeReference containerType, TypeReference listType,
+            TypeDefinition externalContainer, Dictionary<string, TypeDefinition> externalContainerTypes,
+            MethodReference getTypeMethod)
         {
             var effectiveContainerType = externalContainer ?? containerType;
             var propertyBagType = PropertyBag.GeneratePropertyBagHeader(context, effectiveContainerType, out var ctorMethod, out var addPropertyMethod);
@@ -271,9 +261,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
             var baseCtorCall = ctorMethodBody.Instructions.Last();
             foreach (var (member, nameOverride) in CodeGenUtils.GetPropertyMembers(containerType.Resolve()))
             {
-                if (CodeGenUtils.TryGenerateUnityObjectProperty(context, containerType, externalContainer, member, il, addPropertyMethod, createValueMethod, createArrayMethod, createListMethod, unityObjectReference, unityObjectListReference))
-                    continue;
-
                 var memberType = context.ImportReference(Utility.GetMemberType(member).ResolveGenericParameter(containerType));
                 TypeReference externalMember;
                 if (memberType.IsArray)

@@ -15,6 +15,11 @@ namespace Unity.RuntimeSceneSerialization.Internal
             {
                 nameof(MeshFilter.mesh)
             });
+
+            ReflectedPropertyBagUtils.SetIncludedProperties(typeof(MeshFilter), new HashSet<string>
+            {
+                nameof(MeshFilter.sharedMesh)
+            });
         }
 
         // Reference property getters and setters needed for serialization that may get stripped on AOT

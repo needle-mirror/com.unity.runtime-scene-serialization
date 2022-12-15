@@ -12,26 +12,20 @@ namespace Unity.RuntimeSceneSerialization
     /// </summary>
     public partial class SerializationMetadata
     {
-        /// <summary>
-        /// Fixed ID for an invalid object
-        /// </summary>
-        public const int InvalidID = -1;
-
         // ReSharper disable once IdentifierTypo
         const HideFlags k_DontSaveFlags = HideFlags.DontSaveInBuild | HideFlags.DontSaveInEditor;
 
-        bool m_SceneObjectsSetup;
         int m_SceneObjectCount;
         List<Tuple<int, UnityObject>> m_SortedObjectList;
 
-        readonly Dictionary<int, UnityObject> k_SceneObjects = new Dictionary<int, UnityObject>();
-        readonly Dictionary<UnityObject, int> k_SceneObjectLookupMap = new Dictionary<UnityObject, int>();
+        readonly Dictionary<int, UnityObject> k_SceneObjects = new();
+        readonly Dictionary<UnityObject, int> k_SceneObjectLookupMap = new();
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
-        static readonly List<Component> k_Components = new List<Component>();
-        static readonly List<(Component, bool)> k_SortedComponents = new List<(Component, bool)>();
+        static readonly List<Component> k_Components = new();
+        static readonly List<(Component, bool)> k_SortedComponents = new();
 
-        internal bool SceneObjectsSetup => m_SceneObjectsSetup;
+        internal bool SceneObjectsSetup { get; private set; }
 
         internal List<Tuple<int, UnityObject>> SortedObjectList
         {
@@ -59,7 +53,7 @@ namespace Unity.RuntimeSceneSerialization
         /// <param name="roots">List of scene roots for which to add metadata</param>
         public void SetupSceneObjectMetadata(List<GameObject> roots)
         {
-            m_SceneObjectsSetup = true;
+            SceneObjectsSetup = true;
             foreach (var gameObject in roots)
             {
                 AddToMetadataRecursively(gameObject);
@@ -126,10 +120,12 @@ namespace Unity.RuntimeSceneSerialization
         /// Get the metadata id for a scene object
         /// </summary>
         /// <param name="sceneObject">The scene object whose id will be returned</param>
-        /// <returns>The id of the given scene object, if it is tracked in this metadata object</returns>
-        public int GetSceneID(UnityObject sceneObject)
+        /// <param name="id">The id of the given scene object, if it is tracked in this metadata object; default otherwise</param>
+        /// <returns>True the object has been tracked by serialization metadata;
+        /// Returns false if it is an asset or has not been added to the object lookup map</returns>
+        public bool GetSceneID(UnityObject sceneObject, out int id)
         {
-            return k_SceneObjectLookupMap.TryGetValue(sceneObject, out var id) ? id : InvalidID;
+            return k_SceneObjectLookupMap.TryGetValue(sceneObject, out id);
         }
 
         /// <summary>
@@ -165,9 +161,9 @@ namespace Unity.RuntimeSceneSerialization
         /// <param name="fileId">The fileId of the object, if it is an asset tracked by the AssetPack</param>
         public void GetAssetMetadata(UnityObject unityObject, out string guid, out long fileId)
         {
-            if (m_AssetPack != null)
+            if (AssetPack != null)
             {
-                m_AssetPack.GetAssetMetadata(unityObject, out guid, out fileId, SceneObjectsSetup);
+                AssetPack.GetAssetMetadata(unityObject, out guid, out fileId, SceneObjectsSetup);
                 return;
             }
 

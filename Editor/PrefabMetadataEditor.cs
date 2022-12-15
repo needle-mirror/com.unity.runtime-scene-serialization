@@ -11,7 +11,7 @@ namespace Unity.RuntimeSceneSerialization.EditorInternal
     class PrefabMetadataEditor : Editor
     {
         bool m_Expanded;
-        readonly Dictionary<RuntimePrefabPropertyOverride, bool> m_ExpandedStates = new Dictionary<RuntimePrefabPropertyOverride, bool>();
+        readonly Dictionary<RuntimePrefabPropertyOverride, bool> m_ExpandedStates = new();
 
         public override void OnInspectorGUI()
         {
@@ -51,14 +51,8 @@ namespace Unity.RuntimeSceneSerialization.EditorInternal
 
                     switch (propertyOverride)
                     {
-                        case IRuntimePrefabOverrideUnityObject unityObjectProperty:
+                        case IRuntimePrefabOverride<UnityObject> unityObjectProperty:
                             EditorGUILayout.ObjectField("Value", unityObjectProperty.Value, typeof(UnityObject), true);
-                            break;
-                        case IRuntimePrefabOverrideUnityObjectReference objectReferenceProperty:
-                            var objectReference = objectReferenceProperty.Value;
-                            EditorGUILayout.IntField("Scene ID", objectReference.sceneID);
-                            EditorGUILayout.TextField("Guid", objectReference.guid);
-                            EditorGUILayout.LongField("File ID", objectReference.fileId);
                             break;
                         case IRuntimePrefabOverride<AnimationCurve> animationCurveProperty:
                             EditorGUILayout.CurveField("Value", animationCurveProperty.Value);

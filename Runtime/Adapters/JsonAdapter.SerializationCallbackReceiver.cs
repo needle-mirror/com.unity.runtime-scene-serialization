@@ -4,17 +4,20 @@ using UnityEngine;
 
 namespace Unity.RuntimeSceneSerialization.Json.Adapters
 {
-    class JsonSerializationCallbackReceiverAdapter : IContravariantJsonAdapter<ISerializationCallbackReceiver>
+    partial class JsonAdapter : IContravariantJsonAdapter<ISerializationCallbackReceiver>
     {
         void IContravariantJsonAdapter<ISerializationCallbackReceiver>.Serialize(IJsonSerializationContext context, ISerializationCallbackReceiver value)
         {
-            try
+            if (!m_SerializeAsReference)
             {
-                value.OnBeforeSerialize();
-            }
-            catch (Exception e)
-            {
-                Debug.LogException(e);
+                try
+                {
+                    value.OnBeforeSerialize();
+                }
+                catch (Exception e)
+                {
+                    Debug.LogException(e);
+                }
             }
 
             context.ContinueVisitation();
@@ -23,6 +26,8 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
         object IContravariantJsonAdapter<ISerializationCallbackReceiver>.Deserialize(IJsonDeserializationContext context)
         {
             var value = context.ContinueVisitation();
+            if (m_SerializeAsReference)
+                return value;
 
             if (value is ISerializationCallbackReceiver callbackReceiver)
             {

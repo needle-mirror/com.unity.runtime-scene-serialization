@@ -22,6 +22,7 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
         GameObject DeserializePrefab(SerializedObjectView prefabMetadata, AssetPack assetPack, Transform parent, GameObject gameObject)
         {
             var guid = prefabMetadata[k_PrefabMetadataGuidPropertyName].AsStringView().ToString();
+            const string prefabWarningText = "Skipping second deserialization pass to avoid exceptions. This will result in data loss, so be careful about saving this scene.";
 
 #if UNITY_EDITOR
             if (!Application.isPlaying)
@@ -29,14 +30,16 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
                 var path = AssetDatabase.GUIDToAssetPath(guid);
                 if (string.IsNullOrEmpty(path))
                 {
-                    Debug.LogWarning($"Cannot instantiate prefab with guid {guid}");
+                    Debug.LogWarning($"Cannot instantiate prefab with guid {guid}. {prefabWarningText}");
+                    m_MissingPrefab = true;
                     return null;
                 }
 
                 var asset = AssetDatabase.LoadAssetAtPath<GameObject>(path);
                 if (asset == null)
                 {
-                    Debug.LogWarning($"Failed to load prefab asset at path {path}");
+                    Debug.LogWarning($"Failed to load prefab asset at path {path}. {prefabWarningText}");
+                    m_MissingPrefab = true;
                     return null;
                 }
 
@@ -53,7 +56,8 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
 
             if (gameObject == null)
             {
-                Debug.LogWarning($"Failed to instantiate prefab with guid {guid}");
+                Debug.LogWarning($"Failed to instantiate prefab with guid {guid}. {prefabWarningText}");
+                m_MissingPrefab = true;
                 gameObject = new GameObject();
                 gameObject.transform.parent = parent;
                 gameObject.name = $"Prefab Placeholder {guid}";

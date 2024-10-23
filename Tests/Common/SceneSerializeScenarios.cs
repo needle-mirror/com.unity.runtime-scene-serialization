@@ -58,6 +58,7 @@ namespace Unity.RuntimeSceneSerialization.Tests
         static readonly Vector3 k_ExpectedPosition = new Vector3(1.0f, 1.1f, 1.2f);
         const int k_ExpectedLayer = 3;
         const string k_ExpectedTag = "MainCamera";
+        const bool k_ExpectedActivation = false;
 
 #if UNITY_EDITOR
         const HideFlags k_ExpectedHideFlags = HideFlags.NotEditable;
@@ -69,6 +70,11 @@ namespace Unity.RuntimeSceneSerialization.Tests
             go.layer = k_ExpectedLayer;
             go.tag = k_ExpectedTag;
             go.transform.position = k_ExpectedPosition;
+
+            // GameObject.Find can't find inactive objects. In order to test active state, add an inactive child object
+            var inactiveChild = new GameObject("InactiveChild");
+            inactiveChild.SetActive(k_ExpectedActivation);
+            inactiveChild.transform.parent = go.transform;
 
 #if UNITY_EDITOR
             go.hideFlags = k_ExpectedHideFlags;
@@ -82,6 +88,9 @@ namespace Unity.RuntimeSceneSerialization.Tests
             Assert.AreEqual(k_ExpectedLayer, go.layer);
             Assert.AreEqual(k_ExpectedTag, go.tag);
             Assert.AreEqual(k_ExpectedPosition, go.transform.position);
+
+            var inactiveChild = go.transform.GetChild(0).gameObject;
+            Assert.AreEqual(k_ExpectedActivation, inactiveChild.activeSelf);
 
 #if UNITY_EDITOR
             Assert.AreEqual(k_ExpectedHideFlags, go.hideFlags);

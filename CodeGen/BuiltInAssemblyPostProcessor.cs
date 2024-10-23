@@ -40,17 +40,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
         static string s_EditorAssemblyLocation;
 
-        static readonly HashSet<string> k_IgnoredTypes = new()
-        {
-            "AnimationCurve",
-            "Keyframe",
-            "Vector2Int",
-            "Vector3Int",
-            "Rect",
-            "RectInt",
-            "BoundsIn"
-        };
-
         static readonly HashSet<string> k_PreCompiledAssemblies = new();
 
         static BuiltInAssemblyPostProcessor()
@@ -282,7 +271,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
                 if (type.HasGenericParameters && !type.IsGenericInstance)
                     continue;
 
-                if (k_IgnoredTypes.Contains(type.Name))
+                if (SerializationUtils.IgnoredTypes.Contains(type.FullName))
                     continue;
 
                 if (!CodeGenUtils.IsAssignableToComponent(type) && !CodeGenUtils.IsSerializableContainer(type))

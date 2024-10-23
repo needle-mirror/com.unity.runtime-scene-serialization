@@ -62,6 +62,13 @@ namespace Unity.RuntimeSceneSerialization.Tests
 
         public SomeFlags m_UintFlag;
 
+        public Dictionary<int, float> m_Dictionary;
+
+        // Include a field whose type implements ISerializationCallbackReceiver. This is left null intentionally to catch
+        // potential bugs where we try to call these interface methods on a reference, resulting in a null reference exception
+        [SerializeField]
+        MonoBehaviourSerializationCallbackReceiver m_Receiver;
+
         // ReSharper disable once MemberCanBePrivate.Global
         public int PropertyWithSerializedBackingField
         {

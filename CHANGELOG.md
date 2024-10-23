@@ -4,6 +4,18 @@ All notable changes to this package will be documented in this file.
 The format is based on [Keep a Changelog](http://keepachangelog.com/en/1.0.0/)
 and this project adheres to [Semantic Versioning](http://semver.org/spec/v2.0.0.html).
 
+## [1.0.0-exp.5] - 2024-10-23
+### Fixed
+- Fixed a NullReferenceException that could occur when serializing null values where the type conforms to `ISerializationCallbackReceiver`.
+- Use Type.FullName to check types in ignore list. Previous versions used Type.Name which would never match any of the strings in Ignored types.
+- Fixed a NullReferenceException that could occur when serializing types with public Dictionary fields.
+- Fixed deserialization of GameObjects not properly setting active state.
+
+## [1.0.0-exp.4] - 2024-10-09
+### Fixed
+- Add a reference to `Unity.Collections` in the runtime assembly definition to fix compile errors on Unity 6.
+- Various exceptions and errors encountered while deserializing scenes with missing prefabs or component types.
+
 ## [1.0.0-exp.3] - 2022-12-15
 ### Fixed
 - Fix an issue when deserializing missing scripts with empty arrays

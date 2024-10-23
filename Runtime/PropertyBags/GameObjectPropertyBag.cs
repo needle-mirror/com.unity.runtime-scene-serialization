@@ -95,6 +95,8 @@ namespace Unity.RuntimeSceneSerialization.PropertyBags
             public override List<GameObject> GetValue(ref GameObject container)
             {
                 var children = new List<GameObject>();
+
+                // TODO: ARCC-116 This will skip hidden objects on Unity 6
                 foreach (Transform child in container.transform)
                 {
                     var childGameObject = child.gameObject;

@@ -96,47 +96,64 @@ namespace Unity.RuntimeSceneSerialization
                 JsonSerialization.FromJson<SerializedScene>(json, parameters);
 
                 k_Roots.Clear();
+
+                // TODO: ARCC-116 This will skip hidden objects on Unity 6
                 foreach (Transform child in tempSceneRoot)
                 {
                     k_Roots.Add(child.gameObject);
                 }
 
-                metadata.SetupSceneObjectMetadata(k_Roots);
-
-                // Deserialize a second time to set scene references
-                var activeScene = SceneManager.GetActiveScene();
-                adapters.Add(new JsonSerializationCallbackReceiverAdapter());
-                JsonSerialization.FromJsonOverride(json, ref activeScene, parameters);
-
-                onAfterDeserialize?.Invoke(k_Roots);
-
-                foreach (var root in k_Roots)
+                // Missing prefabs throw off scene object count and result in exceptions on the second pass
+                // TODO: ARCC-115 Store scene object count with prefab metadata so we know how much to increment
+                if (adapter.MissingPrefab)
                 {
-                    var visitor = new CollectionInitializationVisitor();
-                    root.GetComponentsInChildren(true, k_Components);
-                    var componentCount = k_Components.Count;
-                    for (var i = 0; i < componentCount; i++)
+                    foreach (var gameObject in k_Roots)
                     {
-                        var component = k_Components[i];
-                        if (component == null)
+                        if (gameObject.transform.parent != sceneRoot.transform)
                             continue;
 
+                        gameObject.transform.SetParent(null, false);
+                    }
+                }
+                else
+                {
+                    metadata.SetupSceneObjectMetadata(k_Roots);
+
+                    // Deserialize a second time to set scene references
+                    var activeScene = SceneManager.GetActiveScene();
+                    JsonSerialization.FromJsonOverride(json, ref activeScene, parameters);
+
+                    onAfterDeserialize?.Invoke(k_Roots);
+
+                    foreach (var gameObject in k_Roots)
+                    {
+                        if (gameObject.transform.parent != sceneRoot.transform)
+                            continue;
+
+                        var visitor = new CollectionInitializationVisitor();
+                        gameObject.GetComponentsInChildren(true, k_Components);
+                        var componentCount = k_Components.Count;
+                        for (var i = 0; i < componentCount; i++)
+                        {
+                            var component = k_Components[i];
+                            if (component == null)
+                                continue;
+
 #if !NET_DOTS && !ENABLE_IL2CPP
-                        // Register a runtime scene serialization property bag in case we encounter new component types in prefabs
-                        RegisterPropertyBagRecursively(component.GetType());
+                            // Register a runtime scene serialization property bag in case we encounter new component types in prefabs
+                            RegisterPropertyBagRecursively(component.GetType());
 #endif
 
-                        PropertyContainer.Accept(visitor, ref component);
-                    }
+                            PropertyContainer.Accept(visitor, ref component);
+                        }
 
-                    // Moving this root object out of its parent will activate all newly created GameObjects
-                    root.transform.SetParent(null, false);
+                        // Moving this root object out of its parent will activate all newly created GameObjects
+                        gameObject.transform.SetParent(null, false);
+                    }
                 }
 
                 adapter.RenderSettings?.ApplyValuesToRenderSettings();
                 DynamicGI.UpdateEnvironment();
-
-                k_Roots.Clear();
                 SafeDestroy(sceneRoot);
             }
             catch (FormatException)
@@ -214,7 +231,6 @@ namespace Unity.RuntimeSceneSerialization
             };
 
             adapters.Add(new JsonAdapter(metadata, parameters));
-            adapters.Add(new JsonSerializationCallbackReceiverAdapter());
             adapters.Add(new JsonFormatVersionAdapter());
             JsonSerialization.FromJsonOverride(jsonString, ref value, parameters);
         }
@@ -242,7 +258,6 @@ namespace Unity.RuntimeSceneSerialization
                 UserDefinedAdapters = adapters
             };
 
-            adapters.Add(new JsonSerializationCallbackReceiverAdapter());
             adapters.Add(new JsonAdapter(metadata, parameters));
             return JsonSerialization.ToJson(value, parameters);
         }

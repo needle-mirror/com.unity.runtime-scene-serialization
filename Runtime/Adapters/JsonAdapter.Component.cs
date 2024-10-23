@@ -52,7 +52,7 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
                 if (!m_FirstPassCompleted)
                     return null;
 
-                return (Component)ReadUnityObjectReference(context);
+                return ReadUnityObjectReference(context) as Component;
             }
 
             var componentView = context.SerializedValue.AsObjectView();

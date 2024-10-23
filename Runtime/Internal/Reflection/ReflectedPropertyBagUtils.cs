@@ -76,6 +76,10 @@ namespace Unity.RuntimeSceneSerialization.Internal
             if (k_SerializableTypes.TryGetValue(type, out var isSerializable))
                 return isSerializable;
 
+            // Dictionary is marked serializable but not supported; ignore dictionary fields
+            if (typeof(IDictionary).IsAssignableFrom(type))
+                return false;
+
             isSerializable =
                 type == k_StringType
                 || type.Namespace == "UnityEngine" // Allow an exception for types like Vector3

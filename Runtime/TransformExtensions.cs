@@ -51,6 +51,8 @@ namespace Unity.RuntimeSceneSerialization
             foreach (var name in names)
             {
                 var found = false;
+
+                // TODO: ARCC-116 This will skip hidden objects on Unity 6
                 foreach (Transform child in root)
                 {
                     var childName = child.name;

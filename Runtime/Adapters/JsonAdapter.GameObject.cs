@@ -36,6 +36,9 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
         readonly Transform m_SceneRoot;
 
         bool m_SerializeAsReference;
+        bool m_MissingPrefab;
+
+        internal bool MissingPrefab => m_MissingPrefab;
 
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
         static readonly List<Component> k_TempComponents = new();
@@ -99,6 +102,7 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
                 writer.WriteKey(GameObjectPropertyBag.ChildrenPropertyName);
                 using (writer.WriteArrayScope())
                 {
+                    // TODO: ARCC-116 This will skip hidden objects on Unity 6
                     foreach (Transform child in value.transform)
                     {
                         JsonSerialization.ToJson(writer, child.gameObject, m_Parameters);
@@ -142,7 +146,7 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
             if (value.TryGetValue(nameof(GameObject.tag), out var tag))
                 gameObject.tag = tag.AsStringView().ToString();
 
-            if (value.TryGetValue(nameof(GameObjectPropertyBag.ActivePropertyName), out var active))
+            if (value.TryGetValue(GameObjectPropertyBag.ActivePropertyName, out var active))
                 gameObject.SetActive(active.AsBoolean());
 
             // TODO: Static flags
@@ -185,7 +189,16 @@ namespace Unity.RuntimeSceneSerialization.Json.Adapters
         Component DeserializeComponent(SerializedValueView componentView, GameObject gameObject, Component component = null)
         {
             var assemblyQualifiedTypeName = componentView[k_TypePropertyName].AsStringView().ToString();
-            var type = Type.GetType(assemblyQualifiedTypeName);
+            Type type = null;
+            try
+            {
+                type = Type.GetType(assemblyQualifiedTypeName);
+            }
+            catch (Exception)
+            {
+                // Suppress error if type is not found. This can happen for a variety of reasons and we handle missing scripts below
+            }
+
             if (type == null)
             {
                 if (component != null)

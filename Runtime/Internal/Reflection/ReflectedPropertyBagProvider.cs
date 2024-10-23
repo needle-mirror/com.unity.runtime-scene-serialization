@@ -64,7 +64,12 @@ namespace Unity.RuntimeSceneSerialization.Internal
         {
             if (!TypeTraits<TContainer>.IsContainer || TypeTraits<TContainer>.IsObject)
             {
-                throw new InvalidOperationException("Invalid container type.");
+                throw new InvalidOperationException($"Invalid container type {typeof(TContainer).FullName}.");
+            }
+
+            if (SerializationUtils.IgnoredTypes.Contains(typeof(TContainer).FullName))
+            {
+                throw new InvalidOperationException($"Trying to create reflected property bag for ignored type {typeof(TContainer).FullName}.");
             }
 
             if (typeof(TContainer).IsArray)

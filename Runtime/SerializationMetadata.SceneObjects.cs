@@ -60,6 +60,7 @@ namespace Unity.RuntimeSceneSerialization
             }
         }
 
+
         /// <summary>
         /// Track metadata for this object, its components, and its children and their components
         /// </summary>
@@ -70,6 +71,8 @@ namespace Unity.RuntimeSceneSerialization
                 return;
 
             AddMetadata(gameObject);
+
+            // TODO: ARCC-116 This will skip hidden objects on Unity 6
             foreach (Transform child in gameObject.transform)
             {
                 AddToMetadataRecursively(child.gameObject);

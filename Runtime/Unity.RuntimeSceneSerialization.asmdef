@@ -1,6 +1,7 @@
 {
     "name": "Unity.RuntimeSceneSerialization",
     "references": [
+        "Unity.Collections",
         "Unity.Properties",
         "Unity.TextMeshPro",
         "Unity.Serialization"

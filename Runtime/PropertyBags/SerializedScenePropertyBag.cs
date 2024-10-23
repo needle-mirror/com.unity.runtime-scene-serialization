@@ -44,7 +44,7 @@ namespace Unity.RuntimeSceneSerialization.PropertyBags
 
         class RenderSettingsProperty : Property<SerializedScene, SerializedRenderSettings>
         {
-            public override string Name => "m_RenderSettingsProperty";
+            public override string Name => "m_RenderSettings";
             public override bool IsReadOnly => false;
 
             public override SerializedRenderSettings GetValue(ref SerializedScene container)

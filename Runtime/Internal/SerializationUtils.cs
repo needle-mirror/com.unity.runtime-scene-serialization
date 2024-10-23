@@ -21,6 +21,19 @@ namespace Unity.RuntimeSceneSerialization.Internal
         // Local method use only -- created here to reduce garbage collection. Collections must be cleared before use
         static readonly List<Component> k_Components = new();
 
+        internal static readonly HashSet<string> IgnoredTypes = new()
+        {
+            typeof(AnimationCurve).FullName,
+            typeof(Keyframe).FullName,
+            typeof(Vector2Int).FullName,
+            typeof(Vector3Int).FullName,
+            typeof(Rect).FullName,
+            typeof(RectInt).FullName,
+            typeof(BoundsInt).FullName,
+            typeof(Version).FullName,
+            typeof(SerializedScene).FullName
+        };
+
         internal static void SortComponentList(List<Component> components, List<(Component, bool)> sortedComponents)
         {
             // Remove PrefabMetadata because it is runtime-only

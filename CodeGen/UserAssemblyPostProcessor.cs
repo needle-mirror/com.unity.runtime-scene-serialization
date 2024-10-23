@@ -25,18 +25,6 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
         static readonly MethodInfo k_GetTypeMethod = typeof(Type).GetMethods(BindingFlags.Public | BindingFlags.Static)
             .First(x => x.GetParameters().Length == 1 && x.Name == nameof(Type.GetType));
 
-        static readonly HashSet<string> k_IgnoredTypeNames = new()
-        {
-            typeof(AnimationCurve).FullName,
-            typeof(Keyframe).FullName,
-            typeof(Vector2Int).FullName,
-            typeof(Vector3Int).FullName,
-            typeof(Rect).FullName,
-            typeof(RectInt).FullName,
-            typeof(BoundsInt).FullName,
-            typeof(Version).FullName
-        };
-
         public override ILPostProcessor GetInstance()
         {
             return this;
@@ -115,7 +103,7 @@ namespace Unity.RuntimeSceneSerialization.CodeGen
 
             foreach (var type in CodeGenUtils.PostProcessAssembly(namespaceExceptions, typeExceptions, compiledAssembly, true))
             {
-                if (type.Module != module || k_IgnoredTypeNames.Contains(type.FullName))
+                if (type.Module != module || SerializationUtils.IgnoredTypes.Contains(type.FullName))
                     continue;
 
                 serializableTypes.Add(type);
